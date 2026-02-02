@@ -23,47 +23,7 @@ export async function fetchUsdRate(): Promise<number> {
 }
 
 /**
- * BUSCA SECUNDÁRIA: Yahoo Finance (via Proxy)
- * Usado se a Brapi falhar ou não tiver o ticker.
- */
-async function fetchFromYahooFinance(tickers: string[]): Promise<Record<string, number>> {
-  const results: Record<string, number> = {};
-  const usdRate = await fetchUsdRate();
-  
-  try {
-    // Usamos o AllOrigins para evitar bloqueio de CORS do Yahoo Finance no navegador
-    const symbols = tickers.map(t => {
-       // Converte tickers BR para o formato Yahoo (ex: PETR4 -> PETR4.SA)
-       if (/^[A-Z]{4}(3|4|5|6|11)$/.test(t.toUpperCase())) return `${t.toUpperCase()}.SA`;
-       return t.toUpperCase();
-    }).join(',');
-
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(
-      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}`
-    )}`;
-
-    const response = await fetch(proxyUrl);
-    const data = await response.json();
-
-    data.quoteResponse?.result?.forEach((quote: any) => {
-      let ticker = quote.symbol.replace('.SA', '');
-      let price = quote.regularMarketPrice;
-
-      if (quote.currency === 'USD') {
-        price = price * usdRate;
-      }
-      results[ticker] = price;
-    });
-
-    return results;
-  } catch (error) {
-    console.error("Yahoo Finance Fallback Error:", error);
-    return {};
-  }
-}
-
-/**
- * BUSCA PRINCIPAL: Brapi + Fallback Yahoo
+ * BUSCA PRINCIPAL: Brapi
  */
 export async function fetchCurrentPrices(tickers: string[]): Promise<Record<string, number>> {
   if (tickers.length === 0) return {};
@@ -75,7 +35,7 @@ export async function fetchCurrentPrices(tickers: string[]): Promise<Record<stri
     const brTickers = tickers.filter(t => /^[A-Z]{4}(3|4|5|6|11)$/.test(t.toUpperCase()));
     const usTickers = tickers.filter(t => !brTickers.includes(t));
 
-    // 1. Tenta Brapi
+    // 1. Tenta Brapi (Brasil)
     if (brTickers.length > 0) {
       const resp = await fetch(`https://brapi.dev/api/quote/${brTickers.join(',')}?token=${BRAPI_TOKEN}`);
       const data = await resp.json();
@@ -84,26 +44,24 @@ export async function fetchCurrentPrices(tickers: string[]): Promise<Record<stri
       });
     }
 
+    // 2. Tenta Brapi (US/Crypto/Global)
     if (usTickers.length > 0) {
       const resp = await fetch(`https://brapi.dev/api/v2/quote?symbols=${usTickers.join(',')}&token=${BRAPI_TOKEN}`);
       const data = await resp.json();
       data.results?.forEach((item: any) => {
-        if (item.symbol && item.regularMarketPrice) finalResults[item.symbol] = item.regularMarketPrice * usdRate;
+        if (item.symbol && item.regularMarketPrice) {
+          // Se vier em USD, converte
+          finalResults[item.symbol] = item.currency === 'USD' 
+            ? item.regularMarketPrice * usdRate 
+            : item.regularMarketPrice;
+        }
       });
-    }
-
-    // 2. Verifica tickers faltantes
-    const missing = tickers.filter(t => !finalResults[t]);
-    if (missing.length > 0) {
-      console.log(`Buscando ${missing.length} ativos no Yahoo Finance...`);
-      const yahooData = await fetchFromYahooFinance(missing);
-      finalResults = { ...finalResults, ...yahooData };
     }
 
     return finalResults;
   } catch (error) {
-    // Se a Brapi cair totalmente, tenta tudo no Yahoo
-    return fetchFromYahooFinance(tickers);
+    console.error("Erro na busca de preços:", error);
+    return finalResults;
   }
 }
 

@@ -64,7 +64,7 @@ const App: React.FC = () => {
     setAssets(recalculatedAssets);
   }, [transactions]);
 
-  // Função centralizada de atualização de preços (Com Fallback Yahoo Finance)
+  // Função centralizada de atualização de preços
   const handleRefreshPrices = useCallback(async (targetAssets?: Asset[]) => {
     const list = targetAssets || assets;
     if (list.length === 0 || isLoadingPrices) return;
@@ -159,7 +159,7 @@ const App: React.FC = () => {
         {lastPriceUpdate && (
           <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-100 text-[10px] font-black uppercase">
             <Clock className="w-3.5 h-3.5" />
-            Live (Brapi + Yahoo): {lastPriceUpdate.toLocaleTimeString('pt-BR')}
+            Live (Brapi): {lastPriceUpdate.toLocaleTimeString('pt-BR')}
           </div>
         )}
         <div className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-full border border-slate-200 text-xs font-medium">

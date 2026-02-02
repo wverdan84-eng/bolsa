@@ -51,11 +51,9 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
     else if (range === '3M') cutoff = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
     else if (range === 'YTD') cutoff = new Date(now.getFullYear(), 0, 1);
 
-    // Filter based on original dates (reconstructing from string label is risky, 
-    // but the service uses sorted transaction dates, so we can slice)
     if (range === 'ALL') return rawChartData;
     
-    // Simple slice for the demo based on relative counts if date objects aren't available
+    // Filtro simplificado por contagem para o MVP (idealmente usaria datas reais)
     const counts: Record<TimeRange, number> = { '1W': 7, '1M': 30, '3M': 90, 'YTD': 200, 'ALL': 9999 };
     return rawChartData.slice(-counts[range]);
   }, [rawChartData, range]);
@@ -67,7 +65,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
           <h1 className="text-2xl font-bold text-slate-800">Portfolio Global</h1>
           <p className="text-slate-500 text-sm flex items-center gap-1.5 font-medium">
             <Globe className="w-3.5 h-3.5" />
-            Ativos no Brasil e Exterior via Brapi + Yahoo Finance.
+            Ativos no Brasil e Exterior via Brapi.
           </p>
         </div>
         <div className="flex gap-2">
