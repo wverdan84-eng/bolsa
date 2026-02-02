@@ -1,4 +1,3 @@
-
 import { Asset, AssetType } from "../types";
 import * as XLSX from 'xlsx';
 // @ts-ignore
@@ -9,36 +8,30 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs
 
 // Configurações de API
 const BRAPI_TOKEN = "71LiaxkJdh38TusGMWWcbe"; 
-const TWELVE_DATA_TOKEN = "demo"; // SUBSTITUA POR SUA API KEY DA TWELVE DATA (https://twelvedata.com)
-const CHUNK_SIZE = 20;
+const BRAPI_CHUNK_SIZE = 20;
+const TWELVE_DATA_CHUNK_SIZE = 8; // Limite do plano free para requisições em lote
 
-/**
- * Helper para requisições seguras
- */
+const getStoredKey = (key: string) => {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem(key) || "";
+  }
+  return "";
+};
+
 async function safeFetch(url: string): Promise<any> {
   try {
     const response = await fetch(url);
     const text = await response.text();
-
-    if (!response.ok) {
-      console.warn(`[MarketService] Request failed: ${response.status} for ${url}`);
-      return null;
-    }
-
-    try {
-      return JSON.parse(text);
-    } catch (e) {
-      console.warn(`[MarketService] Invalid JSON received from ${url}`);
-      return null;
-    }
+    if (!response.ok) return null;
+    return JSON.parse(text);
   } catch (error) {
-    console.warn(`[MarketService] Network error: ${(error as Error).message}`);
+    console.error(`[MarketService] Error fetching ${url}:`, error);
     return null;
   }
 }
 
 /**
- * Busca preço do Dólar (Usado para converter preços da Twelve Data)
+ * Busca a cotação USD/BRL atual
  */
 export async function fetchUsdRate(): Promise<number> {
   const data = await safeFetch(`https://brapi.dev/api/v2/currency?currency=USD-BRL&token=${BRAPI_TOKEN}`);
@@ -46,115 +39,112 @@ export async function fetchUsdRate(): Promise<number> {
 }
 
 /**
- * Busca na TWELVE DATA (Apenas Internacional)
+ * Busca preços na Twelve Data (Internacional)
+ * Lida com o limite do plano free de 8 símbolos por lote
  */
-async function fetchTwelveDataPrices(tickers: string[]): Promise<Record<string, number>> {
-  if (tickers.length === 0) return {};
+async function fetchTwelveDataBatch(tickers: string[], apiKey: string): Promise<Record<string, number>> {
+  if (tickers.length === 0 || !apiKey) return {};
   
-  // Twelve Data usa símbolos separados por vírgula (ex: AAPL,MSFT)
-  // Endpoint: https://api.twelvedata.com/price?symbol=...&apikey=...
-  const url = `https://api.twelvedata.com/price?symbol=${tickers.join(',')}&apikey=${TWELVE_DATA_TOKEN}`;
-  
-  const data = await safeFetch(url);
   const results: Record<string, number> = {};
-
-  if (!data) return {};
-
-  // Se pedir apenas 1 ticker, a Twelve Data retorna o objeto direto (ex: {price: 150})
-  // Se pedir vários, retorna { AAPL: {price: 150}, MSFT: {price: 300} }
+  const chunks = [];
   
-  if (tickers.length === 1 && data.price) {
-    const price = parseFloat(data.price);
-    if (!isNaN(price)) results[tickers[0]] = price;
-  } else {
-    // Resposta múltipla
-    Object.keys(data).forEach(key => {
-      if (data[key]?.price) {
-        const price = parseFloat(data[key].price);
-        if (!isNaN(price)) results[key] = price;
-      }
-    });
+  for (let i = 0; i < tickers.length; i += TWELVE_DATA_CHUNK_SIZE) {
+    chunks.push(tickers.slice(i, i + TWELVE_DATA_CHUNK_SIZE));
+  }
+
+  for (const chunk of chunks) {
+    const symbols = chunk.join(',');
+    const url = `https://api.twelvedata.com/price?symbol=${symbols}&apikey=${apiKey}`;
+    const data = await safeFetch(url);
+
+    if (!data) continue;
+
+    // Se pedir 1, retorna { price: "..." }
+    // Se pedir vários, retorna { SYMBOL: { price: "..." } }
+    if (chunk.length === 1) {
+      const ticker = chunk[0];
+      const price = parseFloat(data.price);
+      if (!isNaN(price)) results[ticker] = price;
+    } else {
+      Object.keys(data).forEach(ticker => {
+        const price = parseFloat(data[ticker]?.price);
+        if (!isNaN(price)) results[ticker] = price;
+      });
+    }
+    
+    // Pequeno delay para evitar rate limit do plano free (8 req/min)
+    if (chunks.length > 1) await new Promise(r => setTimeout(r, 500));
   }
 
   return results;
 }
 
 /**
- * Busca na BRAPI (Brasil e Cripto)
+ * Busca preços na Brapi (Nacional e Cripto)
  */
-async function fetchBrapiPrices(tickers: string[], usdRate: number): Promise<Record<string, number>> {
+async function fetchBrapiBatch(tickers: string[], usdRate: number): Promise<Record<string, number>> {
   if (tickers.length === 0) return {};
   
+  const results: Record<string, number> = {};
   const chunks = [];
-  for (let i = 0; i < tickers.length; i += CHUNK_SIZE) {
-    chunks.push(tickers.slice(i, i + CHUNK_SIZE));
+  for (let i = 0; i < tickers.length; i += BRAPI_CHUNK_SIZE) {
+    chunks.push(tickers.slice(i, i + BRAPI_CHUNK_SIZE));
   }
 
-  const promises = chunks.map(async (chunk) => {
+  for (const chunk of chunks) {
     const url = `https://brapi.dev/api/quote/${chunk.join(',')}?token=${BRAPI_TOKEN}`;
     const data = await safeFetch(url);
-    const chunkResults: Record<string, number> = {};
 
-    if (data && data.results && Array.isArray(data.results)) {
+    if (data && data.results) {
       data.results.forEach((item: any) => {
         if (item.symbol && typeof item.regularMarketPrice === 'number') {
           let price = item.regularMarketPrice;
-          if (item.currency === 'USD') price = price * usdRate; // Fallback caso Brapi retorne algo em USD
-          chunkResults[item.symbol] = price;
+          // Se o ativo vier em USD pela Brapi, convertemos para BRL
+          if (item.currency === 'USD') price = price * usdRate;
+          results[item.symbol] = price;
         }
       });
     }
-    return chunkResults;
-  });
-
-  const allResults = await Promise.all(promises);
-  let final: Record<string, number> = {};
-  allResults.forEach(r => { final = { ...final, ...r }; });
-  return final;
-}
-
-/**
- * ORQUESTRADOR PRINCIPAL
- * Separa os tickers e chama a API correta para cada grupo
- */
-export async function fetchCurrentPrices(tickers: string[]): Promise<Record<string, number>> {
-  const validTickers = Array.from(new Set(tickers)).filter(t => t && t.trim().length > 0);
-  if (validTickers.length === 0) return {};
-
-  const usdRate = await fetchUsdRate();
-  const results: Record<string, number> = {};
-
-  // 1. Separação de Tickers
-  // Brasil/Cripto: Termina em número (PETR4), termina em 11 (FIIs), ou Criptos conhecidas
-  const cryptoList = ['BTC', 'ETH', 'SOL', 'USDT', 'ADA', 'DOGE'];
-  
-  const brTickers = validTickers.filter(t => {
-    const isCrypto = cryptoList.includes(t.toUpperCase()) || cryptoList.some(c => t.toUpperCase().includes(c));
-    const isB3 = /[0-9]$/.test(t); // Termina em número (ex: 3, 4, 11)
-    return isB3 || isCrypto;
-  });
-
-  // Internacional: O que sobrar (Stocks e REITs geralmente são apenas letras, ex: AAPL, O, VNQ)
-  const intlTickers = validTickers.filter(t => !brTickers.includes(t));
-
-  // 2. Execução Paralela
-  const [brPrices, intlPricesInUsd] = await Promise.all([
-    fetchBrapiPrices(brTickers, usdRate),
-    fetchTwelveDataPrices(intlTickers)
-  ]);
-
-  // 3. Processamento Brasil (Já vem em BRL da Brapi)
-  Object.assign(results, brPrices);
-
-  // 4. Processamento Internacional (Vem em USD da Twelve Data, converte para BRL)
-  Object.entries(intlPricesInUsd).forEach(([ticker, priceUsd]) => {
-    results[ticker] = priceUsd * usdRate;
-  });
+  }
 
   return results;
 }
 
-// ... (Restante das funções de parseExcelLogic, parsePdfLogic mantidas iguais)
+/**
+ * Orquestrador Principal de Cotações
+ */
+export async function fetchCurrentPrices(tickers: string[]): Promise<Record<string, number>> {
+  const uniqueTickers = Array.from(new Set(tickers)).filter(t => t && t.length > 0);
+  if (uniqueTickers.length === 0) return {};
+
+  const usdRate = await fetchUsdRate();
+  const twelveKey = getStoredKey('bolsamaster_twelve_key');
+
+  // Separação de Tickers
+  const cryptoList = ['BTC', 'ETH', 'SOL', 'USDT', 'ADA', 'DOGE', 'USDC', 'XRP', 'DOT', 'LINK'];
+  const brTickers = uniqueTickers.filter(t => {
+    const isCrypto = cryptoList.includes(t.toUpperCase());
+    const isB3 = /[0-9]$/.test(t); // Tickers B3 terminam em 3, 4, 11, etc.
+    return isB3 || isCrypto;
+  });
+  
+  const intlTickers = uniqueTickers.filter(t => !brTickers.includes(t));
+
+  const [brResults, intlResultsUsd] = await Promise.all([
+    fetchBrapiBatch(brTickers, usdRate),
+    twelveKey ? fetchTwelveDataBatch(intlTickers, twelveKey) : Promise.resolve({} as Record<string, number>)
+  ]);
+
+  const finalResults: Record<string, number> = { ...brResults };
+
+  // Converte resultados internacionais (USD) para BRL
+  Object.entries(intlResultsUsd).forEach(([ticker, priceUsd]) => {
+    // Explicitly cast priceUsd to number to avoid "unknown" type issues in some TS environments
+    finalResults[ticker] = (priceUsd as number) * usdRate;
+  });
+
+  return finalResults;
+}
 
 export async function parseExcelLogic(data: ArrayBuffer): Promise<Partial<Asset>[]> {
   const workbook = XLSX.read(data, { type: 'array' });

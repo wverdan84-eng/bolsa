@@ -6,6 +6,7 @@ import { Portfolio } from './components/Portfolio';
 import { Importer } from './components/Importer';
 import { Transactions } from './components/Transactions';
 import { Stats } from './components/Stats';
+import { Settings } from './components/Settings';
 import { Asset, AssetType, Transaction } from './types';
 import { fetchCurrentPrices } from './services/marketService';
 import { calculatePosition, detectAssetType } from './services/investmentService';
@@ -188,6 +189,7 @@ const App: React.FC = () => {
       )}
       {activeTab === 'import' && <Importer onAssetsImported={handleImportedAssets} />}
       {activeTab === 'stats' && <Stats assets={assets} />}
+      {activeTab === 'settings' && <Settings />}
     </Layout>
   );
 };

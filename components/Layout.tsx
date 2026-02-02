@@ -27,6 +27,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
     { id: 'transactions', label: 'Transações', icon: ArrowLeftRight },
     { id: 'import', label: 'Importar CSV', icon: FileDown },
     { id: 'stats', label: 'Estatísticas', icon: PieChartIcon },
+    { id: 'settings', label: 'Configurações', icon: Settings },
   ];
 
   return (
