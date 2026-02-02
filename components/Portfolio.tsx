@@ -1,7 +1,7 @@
 
 import React, { useMemo } from 'react';
 import { Asset, AssetType, Transaction } from '../types';
-import { ArrowUpRight, ArrowDownRight, RefreshCw, Plus, Info, TrendingUp, Tags, Banknote, Calendar, ChevronRight } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, RefreshCw, Plus, Info, TrendingUp, Tags, Banknote, Globe } from 'lucide-react';
 import { 
   AreaChart, 
   Area, 
@@ -9,8 +9,7 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  ResponsiveContainer,
-  Legend
+  ResponsiveContainer
 } from 'recharts';
 import { calculateHistoricalData, calculateAccumulatedDividends } from '../services/investmentService';
 
@@ -25,30 +24,32 @@ interface PortfolioProps {
 const getTypeColor = (type: AssetType) => {
   switch (type) {
     case AssetType.STOCK: return 'bg-blue-50 text-blue-600 border-blue-100';
+    case AssetType.STOCK_INT: return 'bg-indigo-50 text-indigo-600 border-indigo-100';
     case AssetType.FII: return 'bg-emerald-50 text-emerald-600 border-emerald-100';
+    case AssetType.REIT: return 'bg-teal-50 text-teal-600 border-teal-100';
     case AssetType.ETF: return 'bg-purple-50 text-purple-600 border-purple-100';
     case AssetType.CRYPTO: return 'bg-amber-50 text-amber-600 border-amber-100';
-    case AssetType.FIXED_INCOME: return 'bg-slate-50 text-slate-600 border-slate-100';
     default: return 'bg-slate-50 text-slate-400 border-slate-100';
   }
 };
 
 export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRefreshPrices, isLoading, onAddAsset }) => {
   const chartData = useMemo(() => calculateHistoricalData(transactions, assets), [transactions, assets]);
-  
   const dividendTransactions = useMemo(() => 
     transactions.filter(t => t.type === 'DIVIDEND').sort((a,b) => b.date.localeCompare(a.date)),
     [transactions]
   );
-
   const totalDividends = dividendTransactions.reduce((acc, t) => acc + (t.price - t.costs), 0);
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Sua Carteira</h1>
-          <p className="text-slate-500 text-sm">Posições detalhadas com cotações atualizadas via Brapi.</p>
+          <h1 className="text-2xl font-bold text-slate-800">Portfolio Global</h1>
+          <p className="text-slate-500 text-sm flex items-center gap-1.5">
+            <Globe className="w-3.5 h-3.5" />
+            Ativos no Brasil e Exterior sincronizados via Brapi.
+          </p>
         </div>
         <div className="flex gap-2">
           <button 
@@ -57,14 +58,14 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
             className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-all disabled:opacity-50 shadow-sm text-sm font-semibold"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            Atualizar
+            Atualizar Cotações
           </button>
           <button 
             onClick={onAddAsset}
             className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100 active:scale-95 text-sm font-bold"
           >
             <Plus className="w-4 h-4" />
-            Novo Ativo
+            Adicionar Ativo
           </button>
         </div>
       </div>
@@ -76,10 +77,10 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
               <tr className="bg-slate-50/50 border-b border-slate-100">
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Ativo / Tipo</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Quantidade</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">P. Médio</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Cotação</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">P. Médio (R$)</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Cotação (R$)</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Proventos</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Resultado Total</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Total (R$)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -88,7 +89,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
                   <td colSpan={6} className="px-6 py-16 text-center">
                     <div className="flex flex-col items-center opacity-40">
                       <Tags className="w-12 h-12 mb-2" />
-                      <p className="text-slate-500 font-medium">Nenhum ativo em custódia no momento.</p>
+                      <p className="text-slate-500 font-medium">Nenhum ativo global cadastrado.</p>
                     </div>
                   </td>
                 </tr>
@@ -100,12 +101,16 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
                   const dividends = calculateAccumulatedDividends(asset.ticker, transactions);
                   const totalProfit = capitalGain + dividends;
                   const totalReturnPercent = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
+                  const isInt = asset.type === AssetType.STOCK_INT || asset.type === AssetType.REIT;
 
                   return (
                     <tr key={asset.id} className="hover:bg-slate-50 transition-colors group">
                       <td className="px-6 py-5">
                         <div className="flex flex-col gap-1.5">
-                          <span className="font-black text-slate-900 leading-none group-hover:text-emerald-600 transition-colors">{asset.ticker}</span>
+                          <div className="flex items-center gap-2">
+                             <span className="font-black text-slate-900 leading-none">{asset.ticker}</span>
+                             {isInt && <span className="text-[10px] bg-slate-100 text-slate-400 px-1 rounded font-bold">USD</span>}
+                          </div>
                           <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-bold border w-fit uppercase ${getTypeColor(asset.type)}`}>
                             {asset.type}
                           </span>
@@ -127,7 +132,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
                           <span>{totalReturnPercent.toFixed(2)}%</span>
                         </div>
                         <div className={`text-[10px] font-bold ${totalProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {totalProfit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                          {marketValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                         </div>
                       </td>
                     </tr>
@@ -139,127 +144,10 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
         </div>
       </div>
 
-      {/* Evolução Section */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mt-10">
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-emerald-50 rounded-lg">
-              <TrendingUp className="w-5 h-5 text-emerald-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-slate-800">Crescimento de Patrimônio</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Baseado no seu histórico de aportes</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="h-[300px] w-full">
-          {chartData.length > 1 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="colorEq" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} dy={10} />
-                <YAxis hide />
-                <Tooltip 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                  formatter={(value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                />
-                <Area 
-                  name="Patrimônio" 
-                  type="monotone" 
-                  dataKey="equity" 
-                  stroke="#10b981" 
-                  strokeWidth={3} 
-                  fillOpacity={1} 
-                  fill="url(#colorEq)" 
-                />
-                <Area 
-                  name="Investido" 
-                  type="monotone" 
-                  dataKey="invested" 
-                  stroke="#3b82f6" 
-                  strokeWidth={2} 
-                  strokeDasharray="5 5" 
-                  fill="transparent" 
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex items-center justify-center h-full text-slate-300 text-sm italic border border-dashed border-slate-100 rounded-xl">
-              Gráfico será gerado após sua segunda transação.
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Dividends Section */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mt-10">
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-50 rounded-lg">
-              <Banknote className="w-5 h-5 text-blue-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-slate-800">Histórico de Proventos</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Dividendos e JCP recebidos na conta</p>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] text-slate-400 font-bold uppercase">Total Líquido</p>
-            <p className="text-xl font-black text-blue-600">{totalDividends.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-50/50 border-b border-slate-100">
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Data Rec.</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Ticker</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">V. Bruto</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Impostos</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">V. Líquido</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {dividendTransactions.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-10 text-center text-slate-400 italic text-sm">Nenhum provento registrado.</td>
-                </tr>
-              ) : (
-                dividendTransactions.map((t) => (
-                  <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 text-sm font-medium text-slate-500">
-                      {new Date(t.date).toLocaleDateString('pt-BR')}
-                    </td>
-                    <td className="px-6 py-4 font-black text-slate-800">{t.ticker}</td>
-                    <td className="px-6 py-4 text-right text-slate-600 font-medium">
-                      {t.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                    </td>
-                    <td className="px-6 py-4 text-right text-rose-400 font-medium">
-                      {t.costs > 0 ? `- ${t.costs.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : 'R$ 0,00'}
-                    </td>
-                    <td className="px-6 py-4 text-right font-black text-emerald-600">
-                      {(t.price - t.costs).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      
-      <div className="flex items-center gap-3 p-4 bg-blue-50/40 rounded-xl border border-blue-100/50">
-        <Info className="w-5 h-5 text-blue-500 shrink-0" />
-        <p className="text-[11px] text-blue-700 leading-snug">
-          <strong>Aviso de Cotações:</strong> Os dados de mercado são provenientes da Brapi API. Em períodos de alta volatilidade ou fechamento de mercado, pode haver atraso de até 15 minutos nas cotações de ativos da B3.
+      <div className="flex items-center gap-3 p-4 bg-amber-50 rounded-xl border border-amber-100 shadow-sm shadow-amber-50">
+        <Info className="w-5 h-5 text-amber-500 shrink-0" />
+        <p className="text-[11px] text-amber-800 leading-snug">
+          <strong>Ativos Internacionais:</strong> Cotações de Stocks e REITs americanos são convertidas automaticamente para Reais (BRL) usando a taxa PTAX mais recente da Brapi. Lucros e dividendos refletem o valor convertido.
         </p>
       </div>
     </div>

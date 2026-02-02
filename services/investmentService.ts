@@ -2,17 +2,39 @@
 import { Transaction, Asset, AssetType } from "../types";
 
 /**
- * Detecta o tipo de ativo baseado no ticker (Regras B3)
+ * Detecta o tipo de ativo baseado no ticker (Regras B3 e US Market)
  */
 export function detectAssetType(ticker: string): AssetType {
   const t = ticker.toUpperCase();
-  if (t.endsWith('11')) {
-    // Lista comum de ETFs para diferenciar de FIIs
-    const etfs = ['BOVA11', 'IVVB11', 'SMALL11', 'HASH11', 'ECOO11', 'SMAL11', 'XINA11'];
-    return etfs.includes(t) ? AssetType.ETF : AssetType.FII;
+  
+  // 1. Criptos conhecidas
+  const cryptos = ['BTC', 'ETH', 'SOL', 'ADA', 'DOT', 'USDT'];
+  if (cryptos.includes(t)) return AssetType.CRYPTO;
+
+  // 2. Regras B3 (Brasil)
+  // Tickers BR costumam ter 4 letras seguidas de números
+  if (/^[A-Z]{4}(3|4|5|6|11)$/.test(t)) {
+    if (t.endsWith('11')) {
+      const etfs = ['BOVA11', 'IVVB11', 'SMALL11', 'HASH11', 'ECOO11', 'SMAL11'];
+      return etfs.includes(t) ? AssetType.ETF : AssetType.FII;
+    }
+    return AssetType.STOCK;
   }
-  if (t.endsWith('3') || t.endsWith('4') || t.endsWith('5') || t.endsWith('6')) return AssetType.STOCK;
-  if (t.length < 5) return AssetType.CRYPTO; // Simplificação para cripto (BTC, ETH)
+
+  // 3. Regras Mercado Americano (US)
+  // Tickers US costumam ter 1 a 5 letras, sem números
+  if (/^[A-Z]{1,5}$/.test(t)) {
+    // REITs famosos para ajudar na classificação, caso contrário Stock
+    const commonReits = ['O', 'AMT', 'PLD', 'CCI', 'VICI', 'EQIX', 'PSA'];
+    if (commonReits.includes(t)) return AssetType.REIT;
+    
+    // ETFs Americanos comuns
+    const commonUsEtfs = ['VOO', 'IVV', 'QQQ', 'VTI', 'VXUS', 'SCHD'];
+    if (commonUsEtfs.includes(t)) return AssetType.ETF;
+
+    return AssetType.STOCK_INT;
+  }
+
   return AssetType.STOCK;
 }
 
@@ -49,9 +71,6 @@ export function calculatePosition(ticker: string, transactions: Transaction[]) {
   };
 }
 
-/**
- * Calcula o total de proventos recebidos por um ticker específico
- */
 export function calculateAccumulatedDividends(ticker: string, transactions: Transaction[]): number {
   return transactions
     .filter(t => t.ticker === ticker && t.type === 'DIVIDEND')
@@ -102,8 +121,7 @@ export function calculateHistoricalData(transactions: Transaction[], assets: Ass
     history.push({
       date: new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
       invested: Math.max(0, Math.round(runningInvested)),
-      equity: Math.max(0, Math.round(currentMarketValue)),
-      gain: Math.round(currentMarketValue - runningInvested)
+      equity: Math.max(0, Math.round(currentMarketValue))
     });
   });
 

@@ -1,7 +1,9 @@
 
 export enum AssetType {
-  STOCK = 'Ação',
+  STOCK = 'Ação BR',
+  STOCK_INT = 'Stock US',
   FII = 'FII',
+  REIT = 'REIT',
   CRYPTO = 'Cripto',
   FIXED_INCOME = 'Renda Fixa',
   ETF = 'ETF'
@@ -16,6 +18,7 @@ export interface Asset {
   averagePrice: number;
   currentPrice: number;
   lastUpdated: string;
+  currency?: 'BRL' | 'USD';
 }
 
 export interface Transaction {
