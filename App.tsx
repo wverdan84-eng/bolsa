@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { Portfolio } from './components/Portfolio';
@@ -9,7 +9,7 @@ import { Asset, AssetType, Transaction } from './types';
 import { fetchCurrentPrices } from './services/marketService';
 import { calculatePosition } from './services/investmentService';
 import { getTransactions, saveTransaction, deleteTransactionFromDb, supabase } from './services/supabase';
-import { Loader2, CheckCircle, CloudOff, Database } from 'lucide-react';
+import { Loader2, CheckCircle, CloudOff, Database, Clock } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -18,6 +18,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error' | 'local'>('local');
   const [isLoadingPrices, setIsLoadingPrices] = useState(false);
+  const [lastPriceUpdate, setLastPriceUpdate] = useState<Date | null>(null);
   const [forceOpenTransactionForm, setForceOpenTransactionForm] = useState(false);
 
   useEffect(() => {
@@ -57,6 +58,44 @@ const App: React.FC = () => {
 
     setAssets(recalculatedAssets);
   }, [transactions]);
+
+  const handleRefreshPrices = useCallback(async () => {
+    if (assets.length === 0 || isLoadingPrices) return;
+    setIsLoadingPrices(true);
+    try {
+      const tickers = assets.map(a => a.ticker);
+      const prices = await fetchCurrentPrices(tickers);
+      
+      if (Object.keys(prices).length > 0) {
+        setAssets(prev => prev.map(asset => ({
+          ...asset,
+          currentPrice: prices[asset.ticker] || asset.currentPrice,
+          lastUpdated: new Date().toISOString()
+        })));
+        setLastPriceUpdate(new Date());
+      }
+    } catch (err) {
+      console.error("Erro ao atualizar cotações", err);
+    } finally {
+      setIsLoadingPrices(false);
+    }
+  }, [assets, isLoadingPrices]);
+
+  // Auto-refresh prices every 5 minutes
+  useEffect(() => {
+    if (assets.length > 0) {
+      // If we haven't updated yet, do an initial fetch
+      if (!lastPriceUpdate && !isLoadingPrices) {
+        handleRefreshPrices();
+      }
+
+      const interval = setInterval(() => {
+        handleRefreshPrices();
+      }, 5 * 60 * 1000); // 5 minutes
+
+      return () => clearInterval(interval);
+    }
+  }, [assets.length, lastPriceUpdate, handleRefreshPrices, isLoadingPrices]);
 
   const handleAddTransaction = async (t: Transaction) => {
     setSyncStatus('syncing');
@@ -110,25 +149,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handleRefreshPrices = async () => {
-    if (assets.length === 0) return;
-    setIsLoadingPrices(true);
-    try {
-      const tickers = assets.map(a => a.ticker);
-      const prices = await fetchCurrentPrices(tickers);
-      
-      setAssets(prev => prev.map(asset => ({
-        ...asset,
-        currentPrice: prices[asset.ticker] || asset.currentPrice,
-        lastUpdated: new Date().toISOString()
-      })));
-    } catch (err) {
-      console.error("Erro ao atualizar cotações", err);
-    } finally {
-      setIsLoadingPrices(false);
-    }
-  };
-
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -142,12 +162,18 @@ const App: React.FC = () => {
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      <div className="flex justify-end mb-4">
+      <div className="flex flex-col md:flex-row justify-end items-center gap-3 mb-4">
+        {lastPriceUpdate && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-100 shadow-sm text-[10px] font-black uppercase tracking-wider">
+            <Clock className="w-3.5 h-3.5" />
+            <span>Preços: {lastPriceUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
+        )}
         <div className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-full border border-slate-200 shadow-sm text-xs font-medium">
-          {syncStatus === 'synced' && <><CheckCircle className="w-4 h-4 text-emerald-500" /> <span className="text-slate-600">Sincronizado com Nuvem</span></>}
-          {syncStatus === 'local' && <><Database className="w-4 h-4 text-slate-400" /> <span className="text-slate-500">Armazenamento Local (Offline)</span></>}
+          {syncStatus === 'synced' && <><CheckCircle className="w-4 h-4 text-emerald-500" /> <span className="text-slate-600">Sincronizado</span></>}
+          {syncStatus === 'local' && <><Database className="w-4 h-4 text-slate-400" /> <span className="text-slate-500">Dados Locais</span></>}
           {syncStatus === 'syncing' && <><Loader2 className="w-4 h-4 text-amber-500 animate-spin" /> <span className="text-slate-600">Sincronizando...</span></>}
-          {syncStatus === 'error' && <><CloudOff className="w-4 h-4 text-rose-500" /> <span className="text-rose-600">Erro de Conexão</span></>}
+          {syncStatus === 'error' && <><CloudOff className="w-4 h-4 text-rose-500" /> <span className="text-rose-600">Erro Nuvem</span></>}
         </div>
       </div>
 

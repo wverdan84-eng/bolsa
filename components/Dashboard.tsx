@@ -14,7 +14,7 @@ import {
   Legend,
   CartesianGrid
 } from 'recharts';
-import { TrendingUp, TrendingDown, DollarSign, PieChart as PieChartIcon, LayoutGrid, Wallet } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, PieChart as PieChartIcon, LayoutGrid, Wallet, RefreshCw } from 'lucide-react';
 
 interface DashboardProps {
   assets: Asset[];
@@ -49,9 +49,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ assets }) => {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      <header>
-        <h1 className="text-2xl font-bold text-slate-800">Resumo Patrimonial</h1>
-        <p className="text-slate-500 text-sm">Visão geral do desempenho e alocação dos seus investimentos.</p>
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Resumo Patrimonial</h1>
+          <p className="text-slate-500 text-sm">Visão geral do desempenho e alocação dos seus investimentos.</p>
+        </div>
+        <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-100/50 px-3 py-1 rounded-full">
+          <RefreshCw className="w-3 h-3 animate-[spin_10s_linear_infinite]" />
+          Preços atualizam a cada 5 min
+        </div>
       </header>
 
       {/* Stats Grid */}
