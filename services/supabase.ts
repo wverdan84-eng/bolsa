@@ -2,16 +2,14 @@
 import { createClient } from '@supabase/supabase-js';
 import { Transaction } from '../types';
 
-// CONFIGURAÇÃO DO SUPABASE
-// Certifique-se de usar a URL e a Anon Key corretas do seu painel Supabase
 const SUPABASE_URL = 'https://tmkeilhycxqchshbrzgg.supabase.co'; 
-const SUPABASE_ANON_KEY = 'sua-chave-anon-real-aqui'; // A chave anterior era inválida para o Supabase
+const SUPABASE_ANON_KEY = 'sua-chave-anon-aqui'; 
 
 const isConfigured = () => {
   return SUPABASE_URL && 
          SUPABASE_URL.startsWith('https://') && 
          !SUPABASE_URL.includes('seu-projeto.supabase.co') &&
-         SUPABASE_ANON_KEY.length > 20; // Validação básica de tamanho de JWT
+         SUPABASE_ANON_KEY.length > 20;
 };
 
 export const supabase = isConfigured() 
@@ -21,10 +19,10 @@ export const supabase = isConfigured()
 const LOCAL_STORAGE_KEY = 'bolsamaster_mvp_v1_db';
 
 export async function getTransactions(): Promise<Transaction[]> {
-  if (!supabase) {
-    const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
-    return localData ? JSON.parse(localData) : [];
-  }
+  const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
+  const localList: Transaction[] = localData ? JSON.parse(localData) : [];
+
+  if (!supabase) return localList;
 
   try {
     const { data, error } = await supabase
@@ -33,32 +31,30 @@ export async function getTransactions(): Promise<Transaction[]> {
       .order('date', { ascending: false });
     
     if (error) throw error;
-    return data || [];
+    
+    // Sincroniza local com remoto (opcional: estratégia de merge)
+    if (data && data.length > localList.length) {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+      return data;
+    }
+    return localList;
   } catch (err) {
-    console.warn("Supabase inacessível ou erro de chave. Usando dados locais.");
-    const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
-    return localData ? JSON.parse(localData) : [];
+    return localList;
   }
 }
 
-export async function saveTransaction(transaction: Transaction): Promise<any> {
+export async function saveTransaction(transaction: Transaction): Promise<void> {
   const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
   const current = localData ? JSON.parse(localData) : [];
-  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([transaction, ...current]));
+  const updated = [transaction, ...current];
+  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
 
-  if (!supabase) return [transaction];
-
-  try {
-    const { data, error } = await supabase
-      .from('transactions')
-      .insert([transaction])
-      .select();
-      
-    if (error) throw error;
-    return data;
-  } catch (err) {
-    console.error("Falha ao sincronizar com Supabase:", err);
-    return [transaction];
+  if (supabase) {
+    try {
+      await supabase.from('transactions').insert([transaction]);
+    } catch (err) {
+      console.warn("Falha ao sincronizar com nuvem. Salvo localmente.");
+    }
   }
 }
 
@@ -69,16 +65,11 @@ export async function deleteTransactionFromDb(id: string): Promise<void> {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
   }
 
-  if (!supabase) return;
-
-  try {
-    const { error } = await supabase
-      .from('transactions')
-      .delete()
-      .eq('id', id);
-      
-    if (error) throw error;
-  } catch (err) {
-    console.error("Erro ao deletar na nuvem:", err);
+  if (supabase) {
+    try {
+      await supabase.from('transactions').delete().eq('id', id);
+    } catch (err) {
+      console.error("Erro ao deletar na nuvem.");
+    }
   }
 }

@@ -5,6 +5,7 @@ import { Dashboard } from './components/Dashboard';
 import { Portfolio } from './components/Portfolio';
 import { Importer } from './components/Importer';
 import { Transactions } from './components/Transactions';
+import { Stats } from './components/Stats';
 import { Asset, AssetType, Transaction } from './types';
 import { fetchCurrentPrices } from './services/marketService';
 import { calculatePosition, detectAssetType } from './services/investmentService';
@@ -23,6 +24,7 @@ const App: React.FC = () => {
   
   const prevAssetsLength = useRef(0);
 
+  // Carregamento Inicial
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -39,6 +41,7 @@ const App: React.FC = () => {
     loadData();
   }, []);
 
+  // Recalcula ativos sempre que as transações mudam
   useEffect(() => {
     const uniqueTickers = Array.from(new Set<string>(transactions.map(t => t.ticker)));
     
@@ -61,13 +64,14 @@ const App: React.FC = () => {
     setAssets(recalculatedAssets);
   }, [transactions]);
 
+  // Função centralizada de atualização de preços
   const handleRefreshPrices = useCallback(async (targetAssets?: Asset[]) => {
-    const assetsToFetch = targetAssets || assets;
-    if (assetsToFetch.length === 0 || isLoadingPrices) return;
+    const list = targetAssets || assets;
+    if (list.length === 0 || isLoadingPrices) return;
     
     setIsLoadingPrices(true);
     try {
-      const tickers = assetsToFetch.map(a => a.ticker);
+      const tickers = list.map(a => a.ticker);
       const prices = await fetchCurrentPrices(tickers);
       
       if (Object.keys(prices).length > 0) {
@@ -79,13 +83,13 @@ const App: React.FC = () => {
         setLastPriceUpdate(new Date());
       }
     } catch (err) {
-      console.error("Erro ao atualizar cotações", err);
+      console.error("Brapi Error:", err);
     } finally {
       setIsLoadingPrices(false);
     }
   }, [assets, isLoadingPrices]);
 
-  // Monitora mudanças na carteira para atualizar preços de novos ativos imediatamente
+  // Gatilho para novos ativos
   useEffect(() => {
     if (assets.length > prevAssetsLength.current) {
       handleRefreshPrices();
@@ -93,93 +97,68 @@ const App: React.FC = () => {
     prevAssetsLength.current = assets.length;
   }, [assets.length, handleRefreshPrices]);
 
-  // Timer de 5 minutos
+  // Intervalo de 5 min
   useEffect(() => {
     if (assets.length > 0) {
-      const interval = setInterval(() => {
-        handleRefreshPrices();
-      }, 5 * 60 * 1000);
+      const interval = setInterval(() => handleRefreshPrices(), 5 * 60 * 1000);
       return () => clearInterval(interval);
     }
   }, [assets.length, handleRefreshPrices]);
 
   const handleAddTransaction = async (t: Transaction) => {
     setSyncStatus('syncing');
-    try {
-      await saveTransaction(t);
-      setTransactions(prev => [t, ...prev]);
-      setSyncStatus(supabase ? 'synced' : 'local');
-    } catch (err) {
-      setSyncStatus('error');
-    }
+    await saveTransaction(t);
+    setTransactions(prev => [t, ...prev]);
+    setSyncStatus(supabase ? 'synced' : 'local');
   };
 
   const handleDeleteTransaction = async (id: string) => {
     setSyncStatus('syncing');
-    try {
-      await deleteTransactionFromDb(id);
-      setTransactions(prev => prev.filter(t => t.id !== id));
-      setSyncStatus(supabase ? 'synced' : 'local');
-    } catch (err) {
-      setSyncStatus('error');
-    }
-  };
-
-  const handleGoToAddTransaction = () => {
-    setForceOpenTransactionForm(true);
-    setActiveTab('transactions');
+    await deleteTransactionFromDb(id);
+    setTransactions(prev => prev.filter(t => t.id !== id));
+    setSyncStatus(supabase ? 'synced' : 'local');
   };
 
   const handleImportedAssets = async (newAssetData: Partial<Asset>[]) => {
     setSyncStatus('syncing');
-    try {
-      const addedTransactions: Transaction[] = [];
-      for (const data of newAssetData) {
-        const t: Transaction = {
-          id: Math.random().toString(36).substr(2, 9),
-          ticker: data.ticker || 'UNKNOWN',
-          type: 'BUY',
-          quantity: data.quantity || 0,
-          price: data.averagePrice || 0,
-          costs: 0,
-          date: new Date().toISOString().split('T')[0]
-        };
-        await saveTransaction(t);
-        addedTransactions.push(t);
-      }
-      setTransactions(prev => [...addedTransactions, ...prev]);
-      setSyncStatus(supabase ? 'synced' : 'local');
-      setActiveTab('portfolio');
-    } catch (err) {
-      setSyncStatus('error');
+    const added: Transaction[] = [];
+    for (const data of newAssetData) {
+      const t: Transaction = {
+        id: Math.random().toString(36).substr(2, 9),
+        ticker: data.ticker?.toUpperCase() || 'UNKNOWN',
+        type: 'BUY',
+        quantity: data.quantity || 0,
+        price: data.averagePrice || 0,
+        costs: 0,
+        date: new Date().toISOString().split('T')[0]
+      };
+      await saveTransaction(t);
+      added.push(t);
     }
+    setTransactions(prev => [...added, ...prev]);
+    setSyncStatus(supabase ? 'synced' : 'local');
+    setActiveTab('portfolio');
   };
 
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center space-y-4">
-          <Loader2 className="w-10 h-10 text-emerald-600 animate-spin mx-auto" />
-          <p className="text-slate-500 font-medium">Carregando dados...</p>
-        </div>
+        <Loader2 className="w-10 h-10 text-emerald-600 animate-spin" />
       </div>
     );
   }
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      <div className="flex flex-col md:flex-row justify-end items-center gap-3 mb-4">
+      <div className="flex flex-col md:flex-row justify-end items-center gap-3 mb-6">
         {lastPriceUpdate && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-100 shadow-sm text-[10px] font-black uppercase tracking-wider">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-100 text-[10px] font-black uppercase">
             <Clock className="w-3.5 h-3.5" />
-            <span>Preços: {lastPriceUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+            Live: {lastPriceUpdate.toLocaleTimeString('pt-BR')}
           </div>
         )}
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-full border border-slate-200 shadow-sm text-xs font-medium">
-          {syncStatus === 'synced' && <><CheckCircle className="w-4 h-4 text-emerald-500" /> <span className="text-slate-600">Sincronizado</span></>}
-          {syncStatus === 'local' && <><Database className="w-4 h-4 text-slate-400" /> <span className="text-slate-500">Dados Locais</span></>}
-          {syncStatus === 'syncing' && <><Loader2 className="w-4 h-4 text-amber-500 animate-spin" /> <span className="text-slate-600">Sincronizando...</span></>}
-          {syncStatus === 'error' && <><CloudOff className="w-4 h-4 text-rose-500" /> <span className="text-rose-600">Erro Nuvem</span></>}
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-full border border-slate-200 text-xs font-medium">
+          {syncStatus === 'synced' ? <><CheckCircle className="w-4 h-4 text-emerald-500" /> Cloud Sync</> : <><Database className="w-4 h-4 text-slate-400" /> Local Storage</>}
         </div>
       </div>
 
@@ -190,7 +169,7 @@ const App: React.FC = () => {
           transactions={transactions}
           onRefreshPrices={() => handleRefreshPrices()} 
           isLoading={isLoadingPrices} 
-          onAddAsset={handleGoToAddTransaction}
+          onAddAsset={() => {setForceOpenTransactionForm(true); setActiveTab('transactions');}}
         />
       )}
       {activeTab === 'transactions' && (
@@ -203,12 +182,7 @@ const App: React.FC = () => {
         />
       )}
       {activeTab === 'import' && <Importer onAssetsImported={handleImportedAssets} />}
-      {activeTab === 'stats' && (
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 text-center py-20">
-            <h2 className="text-xl font-bold text-slate-800">Estatísticas Avançadas</h2>
-            <p className="text-slate-500 mt-2">Módulo em desenvolvimento para o MVP.</p>
-        </div>
-      )}
+      {activeTab === 'stats' && <Stats assets={assets} />}
     </Layout>
   );
 };
