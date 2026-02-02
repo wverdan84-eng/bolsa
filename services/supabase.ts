@@ -2,14 +2,16 @@
 import { createClient } from '@supabase/supabase-js';
 import { Transaction } from '../types';
 
-// CONFIGURAÇÃO REAL DO SUPABASE
+// CONFIGURAÇÃO DO SUPABASE
+// Certifique-se de usar a URL e a Anon Key corretas do seu painel Supabase
 const SUPABASE_URL = 'https://tmkeilhycxqchshbrzgg.supabase.co'; 
-const SUPABASE_ANON_KEY = 'sb_publishable_V03NUwgy-r8hos471zZhyQ_KQUovBy3';
+const SUPABASE_ANON_KEY = 'sua-chave-anon-real-aqui'; // A chave anterior era inválida para o Supabase
 
 const isConfigured = () => {
   return SUPABASE_URL && 
          SUPABASE_URL.startsWith('https://') && 
-         !SUPABASE_URL.includes('seu-projeto.supabase.co');
+         !SUPABASE_URL.includes('seu-projeto.supabase.co') &&
+         SUPABASE_ANON_KEY.length > 20; // Validação básica de tamanho de JWT
 };
 
 export const supabase = isConfigured() 
@@ -33,14 +35,13 @@ export async function getTransactions(): Promise<Transaction[]> {
     if (error) throw error;
     return data || [];
   } catch (err) {
-    console.warn("Supabase Offline. Carregando dados locais.");
+    console.warn("Supabase inacessível ou erro de chave. Usando dados locais.");
     const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
     return localData ? JSON.parse(localData) : [];
   }
 }
 
 export async function saveTransaction(transaction: Transaction): Promise<any> {
-  // Sempre salva localmente primeiro para garantir persistência imediata (UX)
   const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
   const current = localData ? JSON.parse(localData) : [];
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([transaction, ...current]));
@@ -57,13 +58,11 @@ export async function saveTransaction(transaction: Transaction): Promise<any> {
     return data;
   } catch (err) {
     console.error("Falha ao sincronizar com Supabase:", err);
-    // Não lançamos erro aqui para não travar a UI, o dado já está no localStorage
     return [transaction];
   }
 }
 
 export async function deleteTransactionFromDb(id: string): Promise<void> {
-  // Remove do local
   const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
   if (localData) {
     const updated = JSON.parse(localData).filter((t: Transaction) => t.id !== id);

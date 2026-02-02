@@ -9,7 +9,7 @@ import { Asset, AssetType, Transaction } from './types';
 import { fetchCurrentPrices } from './services/marketService';
 import { calculatePosition } from './services/investmentService';
 import { getTransactions, saveTransaction, deleteTransactionFromDb, supabase } from './services/supabase';
-import { Loader2, CloudCheck, CloudOff, Database } from 'lucide-react';
+import { Loader2, CheckCircle, CloudOff, Database } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -148,7 +148,7 @@ const App: React.FC = () => {
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
       <div className="flex justify-end mb-4">
         <div className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-full border border-slate-200 shadow-sm text-xs font-medium">
-          {syncStatus === 'synced' && <><CloudCheck className="w-4 h-4 text-emerald-500" /> <span className="text-slate-600">Sincronizado com Nuvem</span></>}
+          {syncStatus === 'synced' && <><CheckCircle className="w-4 h-4 text-emerald-500" /> <span className="text-slate-600">Sincronizado com Nuvem</span></>}
           {syncStatus === 'local' && <><Database className="w-4 h-4 text-slate-400" /> <span className="text-slate-500">Armazenamento Local (Offline)</span></>}
           {syncStatus === 'syncing' && <><Loader2 className="w-4 h-4 text-amber-500 animate-spin" /> <span className="text-slate-600">Sincronizando...</span></>}
           {syncStatus === 'error' && <><CloudOff className="w-4 h-4 text-rose-500" /> <span className="text-rose-600">Erro de Conexão</span></>}
