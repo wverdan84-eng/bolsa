@@ -1,21 +1,17 @@
 
 import React, { useState, useEffect } from 'react';
-import { Save, Key, Globe, ShieldAlert, Check, Wallet, Heart } from 'lucide-react';
+import { Save, Globe, Check, Wallet, Heart, Info } from 'lucide-react';
 
 export const Settings: React.FC = () => {
-  const [twelveKey, setTwelveKey] = useState('');
   const [pixKey, setPixKey] = useState('');
   const [isSaved, setIsSaved] = useState(false);
 
   useEffect(() => {
-    const storedTwelve = localStorage.getItem('bolsamaster_twelve_key');
     const storedPix = localStorage.getItem('bolsamaster_pix_key');
-    if (storedTwelve) setTwelveKey(storedTwelve);
     if (storedPix) setPixKey(storedPix);
   }, []);
 
   const handleSave = () => {
-    localStorage.setItem('bolsamaster_twelve_key', twelveKey.trim());
     localStorage.setItem('bolsamaster_pix_key', pixKey.trim());
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
@@ -25,46 +21,28 @@ export const Settings: React.FC = () => {
     <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
       <header>
         <h1 className="text-2xl font-bold text-slate-800">Configurações</h1>
-        <p className="text-slate-500 text-sm">Configure suas APIs e preferências de visualização.</p>
+        <p className="text-slate-500 text-sm">Gerencie suas preferências e apoio ao projeto.</p>
       </header>
 
-      {/* API Twelve Data */}
+      {/* Info Yahoo Finance */}
       <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex items-center gap-3">
-          <div className="p-2 bg-indigo-50 rounded-lg">
-            <Globe className="w-5 h-5 text-indigo-600" />
+          <div className="p-2 bg-blue-50 rounded-lg">
+            <Globe className="w-5 h-5 text-blue-600" />
           </div>
           <div>
-            <h3 className="font-bold text-slate-800">Cotações Internacionais</h3>
-            <p className="text-xs text-slate-500">Dados reais de Stocks e REITs via Twelve Data.</p>
+            <h3 className="font-bold text-slate-800">Cotações Automáticas</h3>
+            <p className="text-xs text-slate-500">Fontes de dados em tempo real.</p>
           </div>
         </div>
 
-        <div className="p-8 space-y-6">
-          <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 flex gap-3 items-start">
-             <ShieldAlert className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
-             <div className="text-sm text-indigo-800">
-               <p className="font-bold mb-1">Por que preciso disso?</p>
-               <p className="opacity-90 leading-relaxed">
-                 O plano gratuito da Twelve Data é excelente para carteiras pessoais. Ele permite atualizar os ativos americanos de forma independente.
-               </p>
-             </div>
-          </div>
-
-          <div className="space-y-3">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <Key className="w-3 h-3" /> Sua API Key (Twelve Data)
-            </label>
-            <input 
-              type="password" 
-              value={twelveKey}
-              onChange={(e) => setTwelveKey(e.target.value)}
-              placeholder="2c5114736a7245dd9a8fa54f2af69813"
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700"
-            />
-            <p className="text-[11px] text-slate-400 font-medium">
-              Obtenha grátis em <a href="https://twelvedata.com/" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">twelvedata.com</a>
-            </p>
+        <div className="p-8 space-y-4">
+          <div className="flex items-start gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+            <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+            <div className="text-sm text-slate-600 leading-relaxed">
+              <p className="font-bold text-slate-800 mb-1">Integração Yahoo Finance Ativa</p>
+              <p>O BolsaMaster agora utiliza o **Yahoo Finance** para ativos internacionais e a **Brapi** para o mercado brasileiro. Não é necessário configurar nenhuma chave de API externa.</p>
+            </div>
           </div>
         </div>
       </div>
@@ -94,7 +72,7 @@ export const Settings: React.FC = () => {
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-700"
             />
             <p className="text-[11px] text-slate-400 font-medium italic">
-              Se configurada, esta chave aparecerá discretamente no seu Dashboard.
+              Se configurada, esta chave aparecerá discretamente no seu Dashboard para que usuários possam apoiar seu trabalho.
             </p>
           </div>
         </div>

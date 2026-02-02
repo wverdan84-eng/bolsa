@@ -44,26 +44,13 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
 
   const filteredChartData = useMemo(() => {
     if (rawChartData.length === 0) return [];
-    
-    const now = new Date();
-    let cutoff = new Date(0); 
-
-    if (range === '1W') cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    else if (range === '1M') cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    else if (range === '3M') cutoff = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-    else if (range === 'YTD') cutoff = new Date(now.getFullYear(), 0, 1);
-
-    if (range === 'ALL') return rawChartData;
-    
     const counts: Record<TimeRange, number> = { '1W': 7, '1M': 30, '3M': 90, 'YTD': 200, 'ALL': 9999 };
     return rawChartData.slice(-counts[range]);
   }, [rawChartData, range]);
 
-  // Filtro dos ativos baseado na aba selecionada
   const displayedAssets = useMemo(() => {
     return assets.filter(asset => {
       const isIntl = asset.type === AssetType.STOCK_INT || asset.type === AssetType.REIT || asset.type === AssetType.ETF;
-      
       if (activeTab === 'BR') return !isIntl;
       if (activeTab === 'INTL') return isIntl;
       return true;
@@ -72,14 +59,12 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-500">
-      
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Portfolio Global</h1>
           <p className="text-slate-500 text-sm flex items-center gap-1.5 font-medium">
             <Globe className="w-3.5 h-3.5" />
-            Gestão unificada de ativos nacionais e internacionais.
+            Gestão unificada com cotações do Yahoo Finance e Brapi.
           </p>
         </div>
         <div className="flex gap-2">
@@ -101,29 +86,18 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
         </div>
       </div>
 
-      {/* Navigation Tabs */}
       <div className="flex p-1 bg-slate-200/50 rounded-xl w-fit">
-        <button
-          onClick={() => setActiveTab('ALL')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-        >
+        <button onClick={() => setActiveTab('ALL')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'ALL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
           <TrendingUp className="w-3.5 h-3.5" /> Visão Geral
         </button>
-        <button
-          onClick={() => setActiveTab('BR')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'BR' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-        >
+        <button onClick={() => setActiveTab('BR')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'BR' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
           <Flag className="w-3.5 h-3.5" /> Brasil
         </button>
-        <button
-          onClick={() => setActiveTab('INTL')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'INTL' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-        >
+        <button onClick={() => setActiveTab('INTL')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'INTL' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
           <Landmark className="w-3.5 h-3.5" /> Internacional
         </button>
       </div>
 
-      {/* Chart Section (Only Visible in 'ALL') */}
       {activeTab === 'ALL' && (
         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
@@ -136,21 +110,12 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
             </div>
             <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
               {(['1W', '1M', '3M', 'YTD', 'ALL'] as TimeRange[]).map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setRange(r)}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${
-                    range === r 
-                    ? 'bg-white text-emerald-600 shadow-sm' 
-                    : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
+                <button key={r} onClick={() => setRange(r)} className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${range === r ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
                   {r === 'ALL' ? 'TUDO' : r}
                 </button>
               ))}
             </div>
           </div>
-          
           <div className="h-[250px] w-full">
             {filteredChartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -162,37 +127,11 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis 
-                    dataKey="date" 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{fontSize: 10, fontWeight: 600, fill: '#94a3b8'}}
-                    minTickGap={30}
-                  />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 600, fill: '#94a3b8'}} minTickGap={30} />
                   <YAxis hide domain={['auto', 'auto']} />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
-                    formatter={(value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                    labelStyle={{ fontWeight: 800, color: '#1e293b', marginBottom: '4px' }}
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="invested" 
-                    stroke="#94a3b8" 
-                    fill="transparent" 
-                    strokeWidth={2} 
-                    strokeDasharray="5 5"
-                    name="Investido"
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="equity" 
-                    stroke="#10b981" 
-                    fillOpacity={1} 
-                    fill="url(#colorEquity)" 
-                    strokeWidth={3}
-                    name="Patrimônio"
-                  />
+                  <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} formatter={(value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} labelStyle={{ fontWeight: 800, color: '#1e293b', marginBottom: '4px' }} />
+                  <Area type="monotone" dataKey="invested" stroke="#94a3b8" fill="transparent" strokeWidth={2} strokeDasharray="5 5" name="Investido" />
+                  <Area type="monotone" dataKey="equity" stroke="#10b981" fillOpacity={1} fill="url(#colorEquity)" strokeWidth={3} name="Patrimônio" />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
@@ -205,7 +144,6 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
         </div>
       )}
 
-      {/* Portfolio Table */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -247,8 +185,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
                              <span className="font-black text-slate-900 leading-none">{asset.ticker}</span>
                              {isInt && (
                                <span className="flex items-center gap-1 text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100 font-bold">
-                                 <Landmark className="w-2 h-2" />
-                                 US
+                                 <Landmark className="w-2 h-2" /> US
                                </span>
                              )}
                           </div>
@@ -291,8 +228,8 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
           <p><strong>Fonte de Dados:</strong></p>
           <ul className="list-disc list-inside mt-1 ml-1 space-y-1">
              <li>Brasil e Cripto via <strong>Brapi</strong>.</li>
-             <li>EUA (Stocks/REITs) via <strong>Twelve Data</strong>.</li>
-             <li>Todos os valores internacionais são convertidos para BRL pela PTAX do dia.</li>
+             <li>EUA (Stocks/REITs/ETFs) via <strong>Yahoo Finance (Real-time)</strong>.</li>
+             <li>Conversão cambial baseada na PTAX do dia via Brapi.</li>
           </ul>
         </div>
       </div>

@@ -1,3 +1,4 @@
+
 import { Asset, AssetType } from "../types";
 import * as XLSX from 'xlsx';
 // @ts-ignore
@@ -9,21 +10,16 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs
 // Configurações de API
 const BRAPI_TOKEN = "71LiaxkJdh38TusGMWWcbe"; 
 const BRAPI_CHUNK_SIZE = 20;
-const TWELVE_DATA_CHUNK_SIZE = 8; // Limite do plano free para requisições em lote
 
-const getStoredKey = (key: string) => {
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem(key) || "";
-  }
-  return "";
-};
-
-async function safeFetch(url: string): Promise<any> {
+async function safeFetch(url: string, isProxy = false): Promise<any> {
   try {
-    const response = await fetch(url);
-    const text = await response.text();
+    const fetchUrl = isProxy 
+      ? `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}` 
+      : url;
+      
+    const response = await fetch(fetchUrl);
     if (!response.ok) return null;
-    return JSON.parse(text);
+    return await response.json();
   } catch (error) {
     console.error(`[MarketService] Error fetching ${url}:`, error);
     return null;
@@ -39,41 +35,24 @@ export async function fetchUsdRate(): Promise<number> {
 }
 
 /**
- * Busca preços na Twelve Data (Internacional)
- * Lida com o limite do plano free de 8 símbolos por lote
+ * Busca preços no Yahoo Finance (Internacional)
+ * Não requer API Key, mas precisa de proxy para CORS
  */
-async function fetchTwelveDataBatch(tickers: string[], apiKey: string): Promise<Record<string, number>> {
-  if (tickers.length === 0 || !apiKey) return {};
+async function fetchYahooFinanceBatch(tickers: string[]): Promise<Record<string, number>> {
+  if (tickers.length === 0) return {};
   
   const results: Record<string, number> = {};
-  const chunks = [];
+  const symbols = tickers.join(',');
+  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}`;
   
-  for (let i = 0; i < tickers.length; i += TWELVE_DATA_CHUNK_SIZE) {
-    chunks.push(tickers.slice(i, i + TWELVE_DATA_CHUNK_SIZE));
-  }
+  const data = await safeFetch(url, true);
 
-  for (const chunk of chunks) {
-    const symbols = chunk.join(',');
-    const url = `https://api.twelvedata.com/price?symbol=${symbols}&apikey=${apiKey}`;
-    const data = await safeFetch(url);
-
-    if (!data) continue;
-
-    // Se pedir 1, retorna { price: "..." }
-    // Se pedir vários, retorna { SYMBOL: { price: "..." } }
-    if (chunk.length === 1) {
-      const ticker = chunk[0];
-      const price = parseFloat(data.price);
-      if (!isNaN(price)) results[ticker] = price;
-    } else {
-      Object.keys(data).forEach(ticker => {
-        const price = parseFloat(data[ticker]?.price);
-        if (!isNaN(price)) results[ticker] = price;
-      });
-    }
-    
-    // Pequeno delay para evitar rate limit do plano free (8 req/min)
-    if (chunks.length > 1) await new Promise(r => setTimeout(r, 500));
+  if (data && data.quoteResponse && data.quoteResponse.result) {
+    data.quoteResponse.result.forEach((item: any) => {
+      if (item.symbol && typeof item.regularMarketPrice === 'number') {
+        results[item.symbol.toUpperCase()] = item.regularMarketPrice;
+      }
+    });
   }
 
   return results;
@@ -99,9 +78,8 @@ async function fetchBrapiBatch(tickers: string[], usdRate: number): Promise<Reco
       data.results.forEach((item: any) => {
         if (item.symbol && typeof item.regularMarketPrice === 'number') {
           let price = item.regularMarketPrice;
-          // Se o ativo vier em USD pela Brapi, convertemos para BRL
           if (item.currency === 'USD') price = price * usdRate;
-          results[item.symbol] = price;
+          results[item.symbol.toUpperCase()] = price;
         }
       });
     }
@@ -114,17 +92,16 @@ async function fetchBrapiBatch(tickers: string[], usdRate: number): Promise<Reco
  * Orquestrador Principal de Cotações
  */
 export async function fetchCurrentPrices(tickers: string[]): Promise<Record<string, number>> {
-  const uniqueTickers = Array.from(new Set(tickers)).filter(t => t && t.length > 0);
+  const uniqueTickers = Array.from(new Set(tickers.map(t => t.toUpperCase()))).filter(t => t && t.length > 0);
   if (uniqueTickers.length === 0) return {};
 
   const usdRate = await fetchUsdRate();
-  const twelveKey = getStoredKey('bolsamaster_twelve_key');
 
   // Separação de Tickers
   const cryptoList = ['BTC', 'ETH', 'SOL', 'USDT', 'ADA', 'DOGE', 'USDC', 'XRP', 'DOT', 'LINK'];
   const brTickers = uniqueTickers.filter(t => {
-    const isCrypto = cryptoList.includes(t.toUpperCase());
-    const isB3 = /[0-9]$/.test(t); // Tickers B3 terminam em 3, 4, 11, etc.
+    const isCrypto = cryptoList.includes(t);
+    const isB3 = /[0-9]$/.test(t); 
     return isB3 || isCrypto;
   });
   
@@ -132,15 +109,14 @@ export async function fetchCurrentPrices(tickers: string[]): Promise<Record<stri
 
   const [brResults, intlResultsUsd] = await Promise.all([
     fetchBrapiBatch(brTickers, usdRate),
-    twelveKey ? fetchTwelveDataBatch(intlTickers, twelveKey) : Promise.resolve({} as Record<string, number>)
+    fetchYahooFinanceBatch(intlTickers)
   ]);
 
   const finalResults: Record<string, number> = { ...brResults };
 
   // Converte resultados internacionais (USD) para BRL
   Object.entries(intlResultsUsd).forEach(([ticker, priceUsd]) => {
-    // Explicitly cast priceUsd to number to avoid "unknown" type issues in some TS environments
-    finalResults[ticker] = (priceUsd as number) * usdRate;
+    finalResults[ticker] = priceUsd * usdRate;
   });
 
   return finalResults;
