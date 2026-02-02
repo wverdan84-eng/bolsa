@@ -1,17 +1,12 @@
+
 import { Transaction, Asset } from "../types";
 
 /**
  * Calcula a posição consolidada de um ativo seguindo as normas da B3/Receita Federal.
- * 
- * Regras:
- * 1. COMPRA: (Preço * Qtd) + Taxas aumenta o Custo Total. Qtd aumenta.
- *    Novo Preço Médio = Custo Total / Qtd Total.
- * 2. VENDA: Qtd diminui. Custo Total diminui proporcionalmente ao Preço Médio atual.
- *    O Preço Médio não muda na venda.
  */
 export function calculatePosition(ticker: string, transactions: Transaction[]) {
   const tickerTransactions = transactions
-    .filter(t => t.ticker === ticker)
+    .filter(t => t.ticker === ticker && t.type !== 'DIVIDEND') // Ignora dividendos no cálculo de PM/Qtd
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   let totalQty = 0;
@@ -28,8 +23,6 @@ export function calculatePosition(ticker: string, transactions: Transaction[]) {
         const sellQty = Math.min(t.quantity, totalQty);
         
         totalQty -= sellQty;
-        // O custo base é reduzido proporcionalmente à quantidade vendida
-        // O Preço Médio permanece o mesmo
         totalCostBasis = totalQty * currentAvgPrice;
       }
     }
@@ -44,13 +37,14 @@ export function calculatePosition(ticker: string, transactions: Transaction[]) {
 
 /**
  * Gera dados históricos para o gráfico de evolução de patrimônio.
- * Como não temos APIs de preços históricos (restrição de custo zero),
- * calculamos a evolução do Capital Investido (Custo) vs o Valor de Mercado (usando cotações atuais).
  */
 export function calculateHistoricalData(transactions: Transaction[], assets: Asset[]) {
   if (transactions.length === 0) return [];
 
-  const sortedTransactions = [...transactions].sort((a, b) => 
+  // Filtra apenas transações que alteram patrimônio (compra/venda)
+  const equityTransactions = transactions.filter(t => t.type !== 'DIVIDEND');
+
+  const sortedTransactions = [...equityTransactions].sort((a, b) => 
     new Date(a.date).getTime() - new Date(b.date).getTime()
   );
 
@@ -58,7 +52,6 @@ export function calculateHistoricalData(transactions: Transaction[], assets: Ass
   const runningPositions: Record<string, number> = {};
   let runningInvested = 0;
 
-  // Pegamos todas as datas únicas de transações
   const dates = Array.from(new Set(sortedTransactions.map(t => t.date))).sort();
 
   dates.forEach(date => {
@@ -71,23 +64,17 @@ export function calculateHistoricalData(transactions: Transaction[], assets: Ass
         runningPositions[t.ticker] += t.quantity;
         runningInvested += (t.quantity * t.price) + t.costs;
       } else if (t.type === 'SELL') {
-        // Redução proporcional do capital investido para o gráfico (realização)
         const currentQty = runningPositions[t.ticker];
         if (currentQty > 0) {
           const sellQty = Math.min(t.quantity, currentQty);
-          const ratio = sellQty / currentQty;
-          
-          // Estimativa: reduzimos o 'investido' na mesma proporção da quantidade vendida
-          // Isso mantém a visualização do capital que permanece "em risco"
-          const totalTickerInvested = assets.find(a => a.ticker === t.ticker)?.averagePrice || t.price;
-          runningInvested -= (sellQty * totalTickerInvested);
-          
+          const asset = assets.find(a => a.ticker === t.ticker);
+          const avgPrice = asset ? asset.averagePrice : t.price;
+          runningInvested -= (sellQty * avgPrice);
           runningPositions[t.ticker] -= sellQty;
         }
       }
     });
 
-    // Calcula valor de mercado atual daquelas posições naquela data específica
     let currentMarketValue = 0;
     Object.entries(runningPositions).forEach(([ticker, qty]) => {
       const asset = assets.find(a => a.ticker === ticker);

@@ -1,7 +1,7 @@
 
 import React, { useMemo } from 'react';
 import { Asset, AssetType, Transaction } from '../types';
-import { ArrowUpRight, ArrowDownRight, RefreshCw, Plus, Info, TrendingUp, Tags } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, RefreshCw, Plus, Info, TrendingUp, Tags, Banknote, Calendar, ChevronRight } from 'lucide-react';
 import { 
   AreaChart, 
   Area, 
@@ -34,6 +34,13 @@ const getTypeColor = (type: AssetType) => {
 
 export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRefreshPrices, isLoading, onAddAsset }) => {
   const chartData = useMemo(() => calculateHistoricalData(transactions, assets), [transactions, assets]);
+  
+  const dividendTransactions = useMemo(() => 
+    transactions.filter(t => t.type === 'DIVIDEND').sort((a,b) => b.date.localeCompare(a.date)),
+    [transactions]
+  );
+
+  const totalDividends = dividendTransactions.reduce((acc, t) => acc + (t.price - t.costs), 0);
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-500">
@@ -185,6 +192,64 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
               Gráfico será gerado após sua segunda transação.
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Dividends Section */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mt-10">
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-50 rounded-lg">
+              <Banknote className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-800">Histórico de Proventos</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Dividendos e JCP recebidos na conta</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-slate-400 font-bold uppercase">Total Líquido</p>
+            <p className="text-xl font-black text-blue-600">{totalDividends.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-slate-50/50 border-b border-slate-100">
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Data Rec.</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Ticker</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">V. Bruto</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Impostos</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">V. Líquido</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {dividendTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-10 text-center text-slate-400 italic text-sm">Nenhum provento registrado.</td>
+                </tr>
+              ) : (
+                dividendTransactions.map((t) => (
+                  <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 text-sm font-medium text-slate-500">
+                      {new Date(t.date).toLocaleDateString('pt-BR')}
+                    </td>
+                    <td className="px-6 py-4 font-black text-slate-800">{t.ticker}</td>
+                    <td className="px-6 py-4 text-right text-slate-600 font-medium">
+                      {t.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </td>
+                    <td className="px-6 py-4 text-right text-rose-400 font-medium">
+                      {t.costs > 0 ? `- ${t.costs.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : 'R$ 0,00'}
+                    </td>
+                    <td className="px-6 py-4 text-right font-black text-emerald-600">
+                      {(t.price - t.costs).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
       

@@ -22,7 +22,7 @@ export interface Transaction {
   id: string;
   date: string;
   ticker: string;
-  type: 'BUY' | 'SELL';
+  type: 'BUY' | 'SELL' | 'DIVIDEND';
   quantity: number;
   price: number;
   costs: number;

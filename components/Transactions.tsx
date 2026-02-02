@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Transaction } from '../types';
-import { Plus, Trash2, ArrowUpCircle, ArrowDownCircle, Search, X, Calendar, Wallet } from 'lucide-react';
+import { Plus, Trash2, ArrowUpCircle, ArrowDownCircle, Search, X, Calendar, Wallet, Banknote } from 'lucide-react';
 import { generateId } from '../services/investmentService';
 import { COMMON_TICKERS } from '../constants';
 
@@ -23,7 +23,7 @@ export const Transactions: React.FC<TransactionsProps> = ({
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     ticker: '',
-    type: 'BUY' as 'BUY' | 'SELL',
+    type: 'BUY' as 'BUY' | 'SELL' | 'DIVIDEND',
     quantity: '',
     price: '',
     costs: '0',
@@ -56,7 +56,6 @@ export const Transactions: React.FC<TransactionsProps> = ({
     setFormData({ ...formData, ticker: upperValue });
 
     if (upperValue.length > 0) {
-      // Explicitly type Set<string> to avoid 'unknown' inference during suggestion filtering
       const existingTickers = Array.from(new Set<string>(transactions.map(t => t.ticker)));
       const allPossible = Array.from(new Set<string>([...existingTickers, ...COMMON_TICKERS]));
       const filtered = allPossible.filter(t => t.startsWith(upperValue)).slice(0, 5);
@@ -69,13 +68,13 @@ export const Transactions: React.FC<TransactionsProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.ticker || !formData.quantity || !formData.price) return;
+    if (!formData.ticker || !formData.price) return;
 
     const newTransaction: Transaction = {
       id: generateId(),
       ticker: formData.ticker.toUpperCase(),
       type: formData.type,
-      quantity: parseFloat(formData.quantity),
+      quantity: formData.type === 'DIVIDEND' ? 1 : parseFloat(formData.quantity || '0'),
       price: parseFloat(formData.price),
       costs: parseFloat(formData.costs || '0'),
       date: formData.date
@@ -140,11 +139,12 @@ export const Transactions: React.FC<TransactionsProps> = ({
             </label>
             <select 
               value={formData.type}
-              onChange={e => setFormData({...formData, type: e.target.value as 'BUY' | 'SELL'})}
+              onChange={e => setFormData({...formData, type: e.target.value as any})}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-all font-bold"
             >
               <option value="BUY">Compra</option>
               <option value="SELL">Venda</option>
+              <option value="DIVIDEND">Dividendo</option>
             </select>
           </div>
 
@@ -163,15 +163,21 @@ export const Transactions: React.FC<TransactionsProps> = ({
 
           <div className="md:col-span-2 grid grid-cols-3 gap-4">
              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Qtd</label>
-                <input type="number" step="any" required value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold" />
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  {formData.type === 'DIVIDEND' ? 'Qt. Titular' : 'Qtd'}
+                </label>
+                <input type="number" step="any" required={formData.type !== 'DIVIDEND'} value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold disabled:opacity-50" disabled={formData.type === 'DIVIDEND'} placeholder={formData.type === 'DIVIDEND' ? '1' : ''} />
              </div>
              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Preço</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  {formData.type === 'DIVIDEND' ? 'V. Bruto' : 'Preço'}
+                </label>
                 <input type="number" step="0.01" required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold" />
              </div>
              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Taxas</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  {formData.type === 'DIVIDEND' ? 'Imposto' : 'Taxas'}
+                </label>
                 <input type="number" step="0.01" value={formData.costs} onChange={e => setFormData({...formData, costs: e.target.value})} className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold" />
              </div>
           </div>
@@ -205,17 +211,21 @@ export const Transactions: React.FC<TransactionsProps> = ({
                 </tr>
               ) : (
                 transactions.sort((a,b) => b.date.localeCompare(a.date)).map((t) => {
-                  const total = (t.quantity * t.price) + (t.type === 'BUY' ? t.costs : -t.costs);
+                  const total = t.type === 'DIVIDEND' ? (t.price - t.costs) : (t.quantity * t.price) + (t.type === 'BUY' ? t.costs : -t.costs);
                   return (
                     <tr key={t.id} className="hover:bg-slate-50 transition-colors group">
                       <td className="px-6 py-5 text-xs font-bold text-slate-400">{new Date(t.date).toLocaleDateString('pt-BR')}</td>
                       <td className="px-6 py-5 font-black text-slate-800">{t.ticker}</td>
                       <td className="px-6 py-5 text-center">
-                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black tracking-widest uppercase ${t.type === 'BUY' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
-                          {t.type === 'BUY' ? 'COMPRA' : 'VENDA'}
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black tracking-widest uppercase border ${
+                          t.type === 'BUY' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
+                          t.type === 'SELL' ? 'bg-rose-50 text-rose-600 border-rose-100' :
+                          'bg-blue-50 text-blue-600 border-blue-100'
+                        }`}>
+                          {t.type === 'BUY' ? 'COMPRA' : t.type === 'SELL' ? 'VENDA' : 'DIVIDENDO'}
                         </span>
                       </td>
-                      <td className="px-6 py-5 text-right text-slate-600 font-bold">{t.quantity}</td>
+                      <td className="px-6 py-5 text-right text-slate-600 font-bold">{t.type === 'DIVIDEND' ? '-' : t.quantity}</td>
                       <td className="px-6 py-5 text-right text-slate-600 font-medium">
                         {t.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                       </td>
