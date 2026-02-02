@@ -64,7 +64,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
           <h1 className="text-2xl font-bold text-slate-800">Portfolio Global</h1>
           <p className="text-slate-500 text-sm flex items-center gap-1.5 font-medium">
             <Globe className="w-3.5 h-3.5" />
-            Gestão unificada com cotações do Yahoo Finance e Brapi.
+            Dados em tempo real via Yahoo Finance Engine.
           </p>
         </div>
         <div className="flex gap-2">
@@ -225,11 +225,11 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
       <div className="flex items-center gap-3 p-4 bg-slate-100 rounded-xl border border-slate-200">
         <Info className="w-5 h-5 text-slate-500 shrink-0" />
         <div className="text-[11px] text-slate-600 leading-snug font-medium">
-          <p><strong>Fonte de Dados:</strong></p>
+          <p><strong>Motor de Cotações:</strong></p>
           <ul className="list-disc list-inside mt-1 ml-1 space-y-1">
-             <li>Brasil e Cripto via <strong>Brapi</strong>.</li>
-             <li>EUA (Stocks/REITs/ETFs) via <strong>Yahoo Finance (Real-time)</strong>.</li>
-             <li>Conversão cambial baseada na PTAX do dia via Brapi.</li>
+             <li>Todos os ativos (B3, NYSE, NASDAQ, Crypto) via <strong>Yahoo Finance</strong>.</li>
+             <li>Conversão cambial via par <strong>USDBRL=X</strong> em tempo real.</li>
+             <li>Dados processados localmente sem envio de chaves de API.</li>
           </ul>
         </div>
       </div>

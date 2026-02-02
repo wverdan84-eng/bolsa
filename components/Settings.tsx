@@ -31,7 +31,7 @@ export const Settings: React.FC = () => {
             <Globe className="w-5 h-5 text-blue-600" />
           </div>
           <div>
-            <h3 className="font-bold text-slate-800">Cotações Automáticas</h3>
+            <h3 className="font-bold text-slate-800">Cotações Globais</h3>
             <p className="text-xs text-slate-500">Fontes de dados em tempo real.</p>
           </div>
         </div>
@@ -40,8 +40,8 @@ export const Settings: React.FC = () => {
           <div className="flex items-start gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
             <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
             <div className="text-sm text-slate-600 leading-relaxed">
-              <p className="font-bold text-slate-800 mb-1">Integração Yahoo Finance Ativa</p>
-              <p>O BolsaMaster agora utiliza o **Yahoo Finance** para ativos internacionais e a **Brapi** para o mercado brasileiro. Não é necessário configurar nenhuma chave de API externa.</p>
+              <p className="font-bold text-slate-800 mb-1">Motor Yahoo Finance Ativo</p>
+              <p>O BolsaMaster agora utiliza o **Yahoo Finance** para TODOS os ativos. O sistema gerencia automaticamente os sufixos para o mercado brasileiro e criptomoedas, garantindo precisão global sem custos de API.</p>
             </div>
           </div>
         </div>
