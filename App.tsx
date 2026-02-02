@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { Portfolio } from './components/Portfolio';
@@ -7,7 +7,7 @@ import { Importer } from './components/Importer';
 import { Transactions } from './components/Transactions';
 import { Asset, AssetType, Transaction } from './types';
 import { fetchCurrentPrices } from './services/marketService';
-import { calculatePosition } from './services/investmentService';
+import { calculatePosition, detectAssetType } from './services/investmentService';
 import { getTransactions, saveTransaction, deleteTransactionFromDb, supabase } from './services/supabase';
 import { Loader2, CheckCircle, CloudOff, Database, Clock } from 'lucide-react';
 
@@ -20,6 +20,8 @@ const App: React.FC = () => {
   const [isLoadingPrices, setIsLoadingPrices] = useState(false);
   const [lastPriceUpdate, setLastPriceUpdate] = useState<Date | null>(null);
   const [forceOpenTransactionForm, setForceOpenTransactionForm] = useState(false);
+  
+  const prevAssetsLength = useRef(0);
 
   useEffect(() => {
     const loadData = async () => {
@@ -48,7 +50,7 @@ const App: React.FC = () => {
         id: existingAsset?.id || Math.random().toString(36).substr(2, 9),
         ticker,
         name: existingAsset?.name || 'Ativo Registrado',
-        type: ticker.endsWith('11') ? AssetType.FII : AssetType.STOCK,
+        type: detectAssetType(ticker),
         quantity,
         averagePrice,
         currentPrice: existingAsset?.currentPrice || averagePrice,
@@ -59,11 +61,13 @@ const App: React.FC = () => {
     setAssets(recalculatedAssets);
   }, [transactions]);
 
-  const handleRefreshPrices = useCallback(async () => {
-    if (assets.length === 0 || isLoadingPrices) return;
+  const handleRefreshPrices = useCallback(async (targetAssets?: Asset[]) => {
+    const assetsToFetch = targetAssets || assets;
+    if (assetsToFetch.length === 0 || isLoadingPrices) return;
+    
     setIsLoadingPrices(true);
     try {
-      const tickers = assets.map(a => a.ticker);
+      const tickers = assetsToFetch.map(a => a.ticker);
       const prices = await fetchCurrentPrices(tickers);
       
       if (Object.keys(prices).length > 0) {
@@ -81,21 +85,23 @@ const App: React.FC = () => {
     }
   }, [assets, isLoadingPrices]);
 
-  // Auto-refresh prices every 5 minutes
+  // Monitora mudanças na carteira para atualizar preços de novos ativos imediatamente
+  useEffect(() => {
+    if (assets.length > prevAssetsLength.current) {
+      handleRefreshPrices();
+    }
+    prevAssetsLength.current = assets.length;
+  }, [assets.length, handleRefreshPrices]);
+
+  // Timer de 5 minutos
   useEffect(() => {
     if (assets.length > 0) {
-      // If we haven't updated yet, do an initial fetch
-      if (!lastPriceUpdate && !isLoadingPrices) {
-        handleRefreshPrices();
-      }
-
       const interval = setInterval(() => {
         handleRefreshPrices();
-      }, 5 * 60 * 1000); // 5 minutes
-
+      }, 5 * 60 * 1000);
       return () => clearInterval(interval);
     }
-  }, [assets.length, lastPriceUpdate, handleRefreshPrices, isLoadingPrices]);
+  }, [assets.length, handleRefreshPrices]);
 
   const handleAddTransaction = async (t: Transaction) => {
     setSyncStatus('syncing');
@@ -182,7 +188,7 @@ const App: React.FC = () => {
         <Portfolio 
           assets={assets} 
           transactions={transactions}
-          onRefreshPrices={handleRefreshPrices} 
+          onRefreshPrices={() => handleRefreshPrices()} 
           isLoading={isLoadingPrices} 
           onAddAsset={handleGoToAddTransaction}
         />

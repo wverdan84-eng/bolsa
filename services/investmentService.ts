@@ -1,12 +1,27 @@
 
-import { Transaction, Asset } from "../types";
+import { Transaction, Asset, AssetType } from "../types";
 
 /**
- * Calcula a posição consolidada de um ativo seguindo as normas da B3/Receita Federal.
+ * Detecta o tipo de ativo baseado no ticker (Regras B3)
+ */
+export function detectAssetType(ticker: string): AssetType {
+  const t = ticker.toUpperCase();
+  if (t.endsWith('11')) {
+    // Lista comum de ETFs para diferenciar de FIIs
+    const etfs = ['BOVA11', 'IVVB11', 'SMALL11', 'HASH11', 'ECOO11', 'SMAL11', 'XINA11'];
+    return etfs.includes(t) ? AssetType.ETF : AssetType.FII;
+  }
+  if (t.endsWith('3') || t.endsWith('4') || t.endsWith('5') || t.endsWith('6')) return AssetType.STOCK;
+  if (t.length < 5) return AssetType.CRYPTO; // Simplificação para cripto (BTC, ETH)
+  return AssetType.STOCK;
+}
+
+/**
+ * Calcula a posição consolidada de um ativo
  */
 export function calculatePosition(ticker: string, transactions: Transaction[]) {
   const tickerTransactions = transactions
-    .filter(t => t.ticker === ticker && t.type !== 'DIVIDEND') // Ignora dividendos no cálculo de PM/Qtd
+    .filter(t => t.ticker === ticker && t.type !== 'DIVIDEND')
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   let totalQty = 0;
@@ -21,7 +36,6 @@ export function calculatePosition(ticker: string, transactions: Transaction[]) {
       if (totalQty > 0) {
         const currentAvgPrice = totalCostBasis / totalQty;
         const sellQty = Math.min(t.quantity, totalQty);
-        
         totalQty -= sellQty;
         totalCostBasis = totalQty * currentAvgPrice;
       }
@@ -36,14 +50,18 @@ export function calculatePosition(ticker: string, transactions: Transaction[]) {
 }
 
 /**
- * Gera dados históricos para o gráfico de evolução de patrimônio.
+ * Calcula o total de proventos recebidos por um ticker específico
  */
+export function calculateAccumulatedDividends(ticker: string, transactions: Transaction[]): number {
+  return transactions
+    .filter(t => t.ticker === ticker && t.type === 'DIVIDEND')
+    .reduce((acc, t) => acc + (t.price - t.costs), 0);
+}
+
 export function calculateHistoricalData(transactions: Transaction[], assets: Asset[]) {
   if (transactions.length === 0) return [];
 
-  // Filtra apenas transações que alteram patrimônio (compra/venda)
   const equityTransactions = transactions.filter(t => t.type !== 'DIVIDEND');
-
   const sortedTransactions = [...equityTransactions].sort((a, b) => 
     new Date(a.date).getTime() - new Date(b.date).getTime()
   );
@@ -59,7 +77,6 @@ export function calculateHistoricalData(transactions: Transaction[], assets: Ass
     
     dayTransactions.forEach(t => {
       if (!runningPositions[t.ticker]) runningPositions[t.ticker] = 0;
-      
       if (t.type === 'BUY') {
         runningPositions[t.ticker] += t.quantity;
         runningInvested += (t.quantity * t.price) + t.costs;

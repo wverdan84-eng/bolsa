@@ -12,7 +12,7 @@ import {
   ResponsiveContainer,
   Legend
 } from 'recharts';
-import { calculateHistoricalData } from '../services/investmentService';
+import { calculateHistoricalData, calculateAccumulatedDividends } from '../services/investmentService';
 
 interface PortfolioProps {
   assets: Asset[];
@@ -26,6 +26,7 @@ const getTypeColor = (type: AssetType) => {
   switch (type) {
     case AssetType.STOCK: return 'bg-blue-50 text-blue-600 border-blue-100';
     case AssetType.FII: return 'bg-emerald-50 text-emerald-600 border-emerald-100';
+    case AssetType.ETF: return 'bg-purple-50 text-purple-600 border-purple-100';
     case AssetType.CRYPTO: return 'bg-amber-50 text-amber-600 border-amber-100';
     case AssetType.FIXED_INCOME: return 'bg-slate-50 text-slate-600 border-slate-100';
     default: return 'bg-slate-50 text-slate-400 border-slate-100';
@@ -77,8 +78,8 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Quantidade</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">P. Médio</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Cotação</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Saldo Atual</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Resultado</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Proventos</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Resultado Total</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -95,8 +96,10 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
                 assets.map((asset) => {
                   const totalInvested = asset.quantity * asset.averagePrice;
                   const marketValue = asset.quantity * asset.currentPrice;
-                  const gain = marketValue - totalInvested;
-                  const gainPercent = totalInvested > 0 ? (gain / totalInvested) * 100 : 0;
+                  const capitalGain = marketValue - totalInvested;
+                  const dividends = calculateAccumulatedDividends(asset.ticker, transactions);
+                  const totalProfit = capitalGain + dividends;
+                  const totalReturnPercent = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
 
                   return (
                     <tr key={asset.id} className="hover:bg-slate-50 transition-colors group">
@@ -115,16 +118,16 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
                       <td className="px-6 py-5 text-right text-slate-900 font-bold">
                         {asset.currentPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                       </td>
-                      <td className="px-6 py-5 text-right font-black text-slate-900">
-                        {marketValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      <td className="px-6 py-5 text-right text-blue-600 font-bold">
+                        {dividends > 0 ? dividends.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
                       </td>
                       <td className="px-6 py-5 text-right">
-                        <div className={`flex items-center justify-end gap-1 font-black text-sm ${gain >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {gain >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                          <span>{gainPercent.toFixed(2)}%</span>
+                        <div className={`flex items-center justify-end gap-1 font-black text-sm ${totalProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {totalProfit >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                          <span>{totalReturnPercent.toFixed(2)}%</span>
                         </div>
-                        <div className={`text-[10px] font-bold ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {gain.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        <div className={`text-[10px] font-bold ${totalProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {totalProfit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                         </div>
                       </td>
                     </tr>
