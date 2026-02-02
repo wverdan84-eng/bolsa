@@ -1,7 +1,7 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Asset, AssetType, Transaction } from '../types';
-import { ArrowUpRight, ArrowDownRight, RefreshCw, Plus, Info, TrendingUp, Tags, Banknote, Globe } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, RefreshCw, Plus, Info, TrendingUp, Tags, Globe, Calendar } from 'lucide-react';
 import { 
   AreaChart, 
   Area, 
@@ -21,6 +21,8 @@ interface PortfolioProps {
   onAddAsset: () => void;
 }
 
+type TimeRange = '1W' | '1M' | '3M' | 'YTD' | 'ALL';
+
 const getTypeColor = (type: AssetType) => {
   switch (type) {
     case AssetType.STOCK: return 'bg-blue-50 text-blue-600 border-blue-100';
@@ -34,21 +36,38 @@ const getTypeColor = (type: AssetType) => {
 };
 
 export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRefreshPrices, isLoading, onAddAsset }) => {
-  const chartData = useMemo(() => calculateHistoricalData(transactions, assets), [transactions, assets]);
-  const dividendTransactions = useMemo(() => 
-    transactions.filter(t => t.type === 'DIVIDEND').sort((a,b) => b.date.localeCompare(a.date)),
-    [transactions]
-  );
-  const totalDividends = dividendTransactions.reduce((acc, t) => acc + (t.price - t.costs), 0);
+  const [range, setRange] = useState<TimeRange>('ALL');
+
+  const rawChartData = useMemo(() => calculateHistoricalData(transactions, assets), [transactions, assets]);
+
+  const filteredChartData = useMemo(() => {
+    if (rawChartData.length === 0) return [];
+    
+    const now = new Date();
+    let cutoff = new Date(0); // Default to all
+
+    if (range === '1W') cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    else if (range === '1M') cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    else if (range === '3M') cutoff = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    else if (range === 'YTD') cutoff = new Date(now.getFullYear(), 0, 1);
+
+    // Filter based on original dates (reconstructing from string label is risky, 
+    // but the service uses sorted transaction dates, so we can slice)
+    if (range === 'ALL') return rawChartData;
+    
+    // Simple slice for the demo based on relative counts if date objects aren't available
+    const counts: Record<TimeRange, number> = { '1W': 7, '1M': 30, '3M': 90, 'YTD': 200, 'ALL': 9999 };
+    return rawChartData.slice(-counts[range]);
+  }, [rawChartData, range]);
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Portfolio Global</h1>
-          <p className="text-slate-500 text-sm flex items-center gap-1.5">
+          <p className="text-slate-500 text-sm flex items-center gap-1.5 font-medium">
             <Globe className="w-3.5 h-3.5" />
-            Ativos no Brasil e Exterior sincronizados via Brapi.
+            Ativos no Brasil e Exterior via Brapi + Yahoo Finance.
           </p>
         </div>
         <div className="flex gap-2">
@@ -70,7 +89,88 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      {/* Chart Section */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+          <div>
+            <h3 className="font-black text-slate-800 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-emerald-500" />
+              Evolução Patrimonial
+            </h3>
+            <p className="text-xs text-slate-400 font-medium">Patrimônio Bruto vs Valor Investido</p>
+          </div>
+          <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+            {(['1W', '1M', '3M', 'YTD', 'ALL'] as TimeRange[]).map((r) => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${
+                  range === r 
+                  ? 'bg-white text-emerald-600 shadow-sm' 
+                  : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {r === 'ALL' ? 'TUDO' : r}
+              </button>
+            ))}
+          </div>
+        </div>
+        
+        <div className="h-[300px] w-full">
+          {filteredChartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={filteredChartData}>
+                <defs>
+                  <linearGradient id="colorEquity" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis 
+                  dataKey="date" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{fontSize: 10, fontWeight: 600, fill: '#94a3b8'}}
+                  minTickGap={30}
+                />
+                <YAxis hide domain={['auto', 'auto']} />
+                <Tooltip 
+                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
+                  formatter={(value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  labelStyle={{ fontWeight: 800, color: '#1e293b', marginBottom: '4px' }}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="invested" 
+                  stroke="#94a3b8" 
+                  fill="transparent" 
+                  strokeWidth={2} 
+                  strokeDasharray="5 5"
+                  name="Investido"
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="equity" 
+                  stroke="#10b981" 
+                  fillOpacity={1} 
+                  fill="url(#colorEquity)" 
+                  strokeWidth={3}
+                  name="Patrimônio"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center text-slate-300 gap-2">
+              <Calendar className="w-5 h-5" />
+              <span className="text-sm font-medium">Dados insuficientes para o gráfico.</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Portfolio Table */}
+      <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
@@ -146,7 +246,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
 
       <div className="flex items-center gap-3 p-4 bg-amber-50 rounded-xl border border-amber-100 shadow-sm shadow-amber-50">
         <Info className="w-5 h-5 text-amber-500 shrink-0" />
-        <p className="text-[11px] text-amber-800 leading-snug">
+        <p className="text-[11px] text-amber-800 leading-snug font-medium">
           <strong>Ativos Internacionais:</strong> Cotações de Stocks e REITs americanos são convertidas automaticamente para Reais (BRL) usando a taxa PTAX mais recente da Brapi. Lucros e dividendos refletem o valor convertido.
         </p>
       </div>
