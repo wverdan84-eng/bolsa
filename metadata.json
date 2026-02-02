@@ -1,0 +1,7 @@
+{
+  "name": "BolsaMaster MVP",
+  "description": "Plataforma de consolidação de investimentos brasileira com foco em baixo custo e facilidade de uso.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
