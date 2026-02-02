@@ -39,7 +39,8 @@ const App: React.FC = () => {
 
   // Recalcula ativos sempre que as transações mudarem
   useEffect(() => {
-    const uniqueTickers = Array.from(new Set(transactions.map(t => t.ticker)));
+    // Explicitly typing the Set to ensure ticker is inferred as string to fix 'unknown' type error
+    const uniqueTickers = Array.from(new Set<string>(transactions.map(t => t.ticker)));
     
     const recalculatedAssets: Asset[] = uniqueTickers.map(ticker => {
       const { quantity, averagePrice } = calculatePosition(ticker, transactions);
