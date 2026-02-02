@@ -20,7 +20,6 @@ const App: React.FC = () => {
   const [isLoadingPrices, setIsLoadingPrices] = useState(false);
   const [forceOpenTransactionForm, setForceOpenTransactionForm] = useState(false);
 
-  // Carrega transações ao iniciar
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -37,9 +36,7 @@ const App: React.FC = () => {
     loadData();
   }, []);
 
-  // Recalcula ativos sempre que as transações mudarem
   useEffect(() => {
-    // Explicitly typing the Set to ensure ticker is inferred as string to fix 'unknown' type error
     const uniqueTickers = Array.from(new Set<string>(transactions.map(t => t.ticker)));
     
     const recalculatedAssets: Asset[] = uniqueTickers.map(ticker => {
@@ -62,16 +59,13 @@ const App: React.FC = () => {
   }, [transactions]);
 
   const handleAddTransaction = async (t: Transaction) => {
-    const prevStatus = syncStatus;
     setSyncStatus('syncing');
     try {
       await saveTransaction(t);
       setTransactions(prev => [t, ...prev]);
       setSyncStatus(supabase ? 'synced' : 'local');
     } catch (err) {
-      console.error("Erro ao salvar:", err);
       setSyncStatus('error');
-      alert("Erro ao salvar. Verifique se a tabela 'transactions' existe no Supabase.");
     }
   };
 
@@ -94,6 +88,7 @@ const App: React.FC = () => {
   const handleImportedAssets = async (newAssetData: Partial<Asset>[]) => {
     setSyncStatus('syncing');
     try {
+      const addedTransactions: Transaction[] = [];
       for (const data of newAssetData) {
         const t: Transaction = {
           id: Math.random().toString(36).substr(2, 9),
@@ -105,8 +100,9 @@ const App: React.FC = () => {
           date: new Date().toISOString().split('T')[0]
         };
         await saveTransaction(t);
-        setTransactions(prev => [t, ...prev]);
+        addedTransactions.push(t);
       }
+      setTransactions(prev => [...addedTransactions, ...prev]);
       setSyncStatus(supabase ? 'synced' : 'local');
       setActiveTab('portfolio');
     } catch (err) {
