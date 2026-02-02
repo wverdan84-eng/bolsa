@@ -1,9 +1,8 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { Transaction } from '../types';
-
 const SUPABASE_URL = 'https://tmkeilhycxqchshbrzgg.supabase.co'; 
-const SUPABASE_ANON_KEY = 'sua-chave-anon-aqui'; 
+const SUPABASE_ANON_KEY = 'sb_publishable_V03NUwgy-r8hos471zZhyQ_KQUovBy3'; 
 
 const isConfigured = () => {
   return SUPABASE_URL && 

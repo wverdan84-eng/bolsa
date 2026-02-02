@@ -64,7 +64,7 @@ const App: React.FC = () => {
     setAssets(recalculatedAssets);
   }, [transactions]);
 
-  // Função centralizada de atualização de preços
+  // Função centralizada de atualização de preços (Com Fallback Yahoo Finance)
   const handleRefreshPrices = useCallback(async (targetAssets?: Asset[]) => {
     const list = targetAssets || assets;
     if (list.length === 0 || isLoadingPrices) return;
@@ -83,7 +83,7 @@ const App: React.FC = () => {
         setLastPriceUpdate(new Date());
       }
     } catch (err) {
-      console.error("Brapi Error:", err);
+      console.error("Market Data Error:", err);
     } finally {
       setIsLoadingPrices(false);
     }
@@ -122,6 +122,8 @@ const App: React.FC = () => {
   const handleImportedAssets = async (newAssetData: Partial<Asset>[]) => {
     setSyncStatus('syncing');
     const added: Transaction[] = [];
+    
+    // Organiza as transações no Supabase
     for (const data of newAssetData) {
       const t: Transaction = {
         id: Math.random().toString(36).substr(2, 9),
@@ -135,8 +137,11 @@ const App: React.FC = () => {
       await saveTransaction(t);
       added.push(t);
     }
+    
     setTransactions(prev => [...added, ...prev]);
     setSyncStatus(supabase ? 'synced' : 'local');
+    
+    // Após organizar, move o usuário para a carteira para ver os preços sendo carregados
     setActiveTab('portfolio');
   };
 
@@ -154,7 +159,7 @@ const App: React.FC = () => {
         {lastPriceUpdate && (
           <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-100 text-[10px] font-black uppercase">
             <Clock className="w-3.5 h-3.5" />
-            Live: {lastPriceUpdate.toLocaleTimeString('pt-BR')}
+            Live (Brapi + Yahoo): {lastPriceUpdate.toLocaleTimeString('pt-BR')}
           </div>
         )}
         <div className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-full border border-slate-200 text-xs font-medium">

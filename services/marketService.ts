@@ -10,55 +10,100 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs
 const BRAPI_TOKEN = "71LiaxkJdh38TusGMWWcbe"; 
 
 /**
- * Busca preço do Dólar atualizado para conversão
+ * Busca preço do Dólar (Fallback)
  */
 export async function fetchUsdRate(): Promise<number> {
   try {
     const response = await fetch(`https://brapi.dev/api/v2/currency?currency=USD-BRL&token=${BRAPI_TOKEN}`);
     const data = await response.json();
-    return data.currency?.[0]?.bidPrice || 5.0; // Fallback seguro
-  } catch (error) {
-    return 5.0;
+    return data.currency?.[0]?.bidPrice || 5.45; 
+  } catch {
+    return 5.45;
   }
 }
 
-export async function fetchCurrentPrices(tickers: string[]): Promise<Record<string, number>> {
-  if (tickers.length === 0) return {};
+/**
+ * BUSCA SECUNDÁRIA: Yahoo Finance (via Proxy)
+ * Usado se a Brapi falhar ou não tiver o ticker.
+ */
+async function fetchFromYahooFinance(tickers: string[]): Promise<Record<string, number>> {
+  const results: Record<string, number> = {};
+  const usdRate = await fetchUsdRate();
+  
   try {
-    const results: Record<string, number> = {};
-    const usdRate = await fetchUsdRate();
+    // Usamos o AllOrigins para evitar bloqueio de CORS do Yahoo Finance no navegador
+    const symbols = tickers.map(t => {
+       // Converte tickers BR para o formato Yahoo (ex: PETR4 -> PETR4.SA)
+       if (/^[A-Z]{4}(3|4|5|6|11)$/.test(t.toUpperCase())) return `${t.toUpperCase()}.SA`;
+       return t.toUpperCase();
+    }).join(',');
 
-    // Separa tickers BR de US
-    const brTickers = tickers.filter(t => /^[A-Z]{4}(3|4|5|6|11)$/.test(t.toUpperCase()));
-    const usTickers = tickers.filter(t => !brTickers.includes(t));
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(
+      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}`
+    )}`;
 
-    // Busca BR
-    if (brTickers.length > 0) {
-      const response = await fetch(`https://brapi.dev/api/quote/${brTickers.join(',')}?token=${BRAPI_TOKEN}`);
-      const data = await response.json();
-      data.results?.forEach((item: any) => {
-        if (item.symbol && item.regularMarketPrice) {
-          results[item.symbol] = item.regularMarketPrice;
-        }
-      });
-    }
+    const response = await fetch(proxyUrl);
+    const data = await response.json();
 
-    // Busca US (Brapi usa rota v2/quote para ativos internacionais em muitos casos)
-    if (usTickers.length > 0) {
-      const response = await fetch(`https://brapi.dev/api/v2/quote?symbols=${usTickers.join(',')}&token=${BRAPI_TOKEN}`);
-      const data = await response.json();
-      data.results?.forEach((item: any) => {
-        if (item.symbol && item.regularMarketPrice) {
-          // Converte para Real automaticamente para o Dashboard consolidado
-          results[item.symbol] = item.regularMarketPrice * usdRate;
-        }
-      });
-    }
+    data.quoteResponse?.result?.forEach((quote: any) => {
+      let ticker = quote.symbol.replace('.SA', '');
+      let price = quote.regularMarketPrice;
+
+      if (quote.currency === 'USD') {
+        price = price * usdRate;
+      }
+      results[ticker] = price;
+    });
 
     return results;
   } catch (error) {
-    console.error("Erro na busca de preços:", error);
+    console.error("Yahoo Finance Fallback Error:", error);
     return {};
+  }
+}
+
+/**
+ * BUSCA PRINCIPAL: Brapi + Fallback Yahoo
+ */
+export async function fetchCurrentPrices(tickers: string[]): Promise<Record<string, number>> {
+  if (tickers.length === 0) return {};
+  
+  let finalResults: Record<string, number> = {};
+  const usdRate = await fetchUsdRate();
+
+  try {
+    const brTickers = tickers.filter(t => /^[A-Z]{4}(3|4|5|6|11)$/.test(t.toUpperCase()));
+    const usTickers = tickers.filter(t => !brTickers.includes(t));
+
+    // 1. Tenta Brapi
+    if (brTickers.length > 0) {
+      const resp = await fetch(`https://brapi.dev/api/quote/${brTickers.join(',')}?token=${BRAPI_TOKEN}`);
+      const data = await resp.json();
+      data.results?.forEach((item: any) => {
+        if (item.symbol && item.regularMarketPrice) finalResults[item.symbol] = item.regularMarketPrice;
+      });
+    }
+
+    if (usTickers.length > 0) {
+      const resp = await fetch(`https://brapi.dev/api/v2/quote?symbols=${usTickers.join(',')}&token=${BRAPI_TOKEN}`);
+      const data = await resp.json();
+      data.results?.forEach((item: any) => {
+        if (item.symbol && item.regularMarketPrice) finalResults[item.symbol] = item.regularMarketPrice * usdRate;
+      });
+    }
+
+    // 2. Verifica tickers faltantes
+    const missing = tickers.filter(t => !finalResults[t]);
+    if (missing.length > 0) {
+      console.log(`Buscando ${missing.length} ativos no Yahoo Finance...`);
+      const yahooData = await fetchFromYahooFinance(missing);
+      finalResults = { ...finalResults, ...yahooData };
+    }
+
+    return finalResults;
+  } catch (error) {
+    // Se a Brapi cair totalmente, tenta tudo no Yahoo
+    return fetchFromYahooFinance(tickers);
   }
 }
 
@@ -69,8 +114,8 @@ export async function parseExcelLogic(data: ArrayBuffer): Promise<Partial<Asset>
   const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
   
   if (json.length < 1) return [];
-  const textContent = json.map(row => row.join(';')).join('\n');
-  return legacyParser(textContent.split('\n'));
+  const textContent = json.map(row => row.join(' ')).join('\n');
+  return universalParser(textContent);
 }
 
 export async function parsePdfLogic(data: ArrayBuffer): Promise<Partial<Asset>[]> {
@@ -85,40 +130,56 @@ export async function parsePdfLogic(data: ArrayBuffer): Promise<Partial<Asset>[]
       const pageText = textContent.items.map((item: any) => 'str' in item ? item.str : '').join(' ');
       fullText += pageText + "\n";
     }
-    return legacyParser(fullText.split('\n'));
+    return universalParser(fullText);
   } catch (err) {
     throw new Error("Falha ao ler o PDF.");
   }
 }
 
 export function parseBrokerCsvLogic(csvText: string): Partial<Asset>[] {
-  const lines = csvText.split(/\r?\n/);
-  if (lines.length < 2) return [];
-  return legacyParser(lines);
+  return universalParser(csvText);
 }
 
-function legacyParser(lines: string[]): Partial<Asset>[] {
+function universalParser(text: string): Partial<Asset>[] {
+  const lines = text.split(/\n/);
   const results: Partial<Asset>[] = [];
+  
   lines.forEach(line => {
-    const parts = line.split(/[\s,;]+/).map(p => p.trim());
-    // Ticker match agora aceita 1-5 letras (US) ou padrão B3
-    const tickerMatch = parts.find(p => /^[A-Z]{1,5}$/.test(p) || /^[A-Z]{4}(3|4|5|6|11)$/.test(p));
+    const words = line.split(/[\s,;]+/).filter(w => w.length > 0);
+    const tickerMatch = words.find(w => /^[A-Z]{4}(3|4|5|6|11)$/.test(w) || /^[A-Z]{1,5}$/.test(w));
     
     if (tickerMatch) {
-      const numbers = parts
-        .map(p => p.replace(/[R$\s.]/g, '').replace(',', '.'))
-        .filter(p => !isNaN(parseFloat(p)) && parseFloat(p) !== 0 && p !== tickerMatch);
-      
+      const numbers = words
+        .map(w => w.replace(/[R$]/g, '').replace(/\./g, '').replace(',', '.'))
+        .map(w => parseFloat(w))
+        .filter(n => !isNaN(n) && n !== 0 && n.toString() !== tickerMatch);
+
       if (numbers.length >= 2) {
-        const val1 = parseFloat(numbers[0]);
-        const val2 = parseFloat(numbers[1]);
         results.push({
-          ticker: tickerMatch,
-          quantity: val1,
-          averagePrice: val2
+          ticker: tickerMatch.toUpperCase(),
+          quantity: numbers[0],
+          averagePrice: numbers[1]
         });
       }
     }
   });
-  return results;
+
+  const consolidated: Record<string, Partial<Asset>> = {};
+  results.forEach(item => {
+    const t = item.ticker!;
+    if (!consolidated[t]) {
+      consolidated[t] = { ...item };
+    } else {
+      const old = consolidated[t];
+      const newQty = (old.quantity || 0) + (item.quantity || 0);
+      const newCost = ((old.quantity || 0) * (old.averagePrice || 0)) + ((item.quantity || 0) * (item.averagePrice || 0));
+      consolidated[t] = {
+        ticker: t,
+        quantity: newQty,
+        averagePrice: newQty > 0 ? newCost / newQty : 0
+      };
+    }
+  });
+
+  return Object.values(consolidated);
 }
