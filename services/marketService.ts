@@ -11,17 +11,45 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs
 const BRAPI_TOKEN = "71LiaxkJdh38TusGMWWcbe"; 
 const BRAPI_CHUNK_SIZE = 20;
 
-async function safeFetch(url: string, isProxy = false): Promise<any> {
+/**
+ * Função de fetch segura que lida com Proxy para evitar erros de CORS
+ * e Ad-blockers.
+ */
+async function safeFetch(url: string, useProxy = false): Promise<any> {
   try {
-    const fetchUrl = isProxy 
-      ? `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}` 
+    // Usamos o endpoint /get do AllOrigins que é mais robusto que o /raw
+    const fetchUrl = useProxy 
+      ? `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&timestamp=${Date.now()}` 
       : url;
       
-    const response = await fetch(fetchUrl);
-    if (!response.ok) return null;
-    return await response.json();
+    const response = await fetch(fetchUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+      mode: 'cors'
+    });
+
+    if (!response.ok) {
+      console.warn(`[MarketService] HTTP Error ${response.status} for: ${url}`);
+      return null;
+    }
+
+    const data = await response.json();
+
+    // Se usou o proxy /get, o JSON real está dentro da propriedade 'contents' como string
+    if (useProxy && data.contents) {
+      try {
+        return JSON.parse(data.contents);
+      } catch (e) {
+        console.error(`[MarketService] Failed to parse proxied content for: ${url}`);
+        return null;
+      }
+    }
+
+    return data;
   } catch (error) {
-    console.error(`[MarketService] Error fetching ${url}:`, error);
+    console.error(`[MarketService] Network/CORS Error for ${url}. Verifique se há ad-blockers ativos.`, error);
     return null;
   }
 }
@@ -31,12 +59,17 @@ async function safeFetch(url: string, isProxy = false): Promise<any> {
  */
 export async function fetchUsdRate(): Promise<number> {
   const data = await safeFetch(`https://brapi.dev/api/v2/currency?currency=USD-BRL&token=${BRAPI_TOKEN}`);
-  return data?.currency?.[0]?.bidPrice || 5.50; 
+  const rate = data?.currency?.[0]?.bidPrice;
+  if (!rate) {
+    console.warn("[MarketService] Usando fallback para USD/BRL (5.50)");
+    return 5.50;
+  }
+  return parseFloat(rate);
 }
 
 /**
  * Busca preços no Yahoo Finance (Internacional)
- * Não requer API Key, mas precisa de proxy para CORS
+ * Requer proxy AllOrigins devido ao bloqueio de CORS do Yahoo
  */
 async function fetchYahooFinanceBatch(tickers: string[]): Promise<Record<string, number>> {
   if (tickers.length === 0) return {};
@@ -45,9 +78,10 @@ async function fetchYahooFinanceBatch(tickers: string[]): Promise<Record<string,
   const symbols = tickers.join(',');
   const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}`;
   
+  // SEMPRE usar proxy para Yahoo Finance no navegador
   const data = await safeFetch(url, true);
 
-  if (data && data.quoteResponse && data.quoteResponse.result) {
+  if (data?.quoteResponse?.result) {
     data.quoteResponse.result.forEach((item: any) => {
       if (item.symbol && typeof item.regularMarketPrice === 'number') {
         results[item.symbol.toUpperCase()] = item.regularMarketPrice;
@@ -72,9 +106,10 @@ async function fetchBrapiBatch(tickers: string[], usdRate: number): Promise<Reco
 
   for (const chunk of chunks) {
     const url = `https://brapi.dev/api/quote/${chunk.join(',')}?token=${BRAPI_TOKEN}`;
+    // Brapi costuma aceitar CORS, mas se falhar, AllOrigins pode ser usado aqui também
     const data = await safeFetch(url);
 
-    if (data && data.results) {
+    if (data?.results) {
       data.results.forEach((item: any) => {
         if (item.symbol && typeof item.regularMarketPrice === 'number') {
           let price = item.regularMarketPrice;
@@ -97,7 +132,7 @@ export async function fetchCurrentPrices(tickers: string[]): Promise<Record<stri
 
   const usdRate = await fetchUsdRate();
 
-  // Separação de Tickers
+  // Separação de Tickers: Cripto, B3 (Nacionais) e Internacionais
   const cryptoList = ['BTC', 'ETH', 'SOL', 'USDT', 'ADA', 'DOGE', 'USDC', 'XRP', 'DOT', 'LINK'];
   const brTickers = uniqueTickers.filter(t => {
     const isCrypto = cryptoList.includes(t);
@@ -116,7 +151,7 @@ export async function fetchCurrentPrices(tickers: string[]): Promise<Record<stri
 
   // Converte resultados internacionais (USD) para BRL
   Object.entries(intlResultsUsd).forEach(([ticker, priceUsd]) => {
-    finalResults[ticker] = priceUsd * usdRate;
+    finalResults[ticker] = (priceUsd as number) * usdRate;
   });
 
   return finalResults;
