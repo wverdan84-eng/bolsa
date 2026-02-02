@@ -6,27 +6,36 @@ import { Portfolio } from './components/Portfolio';
 import { Importer } from './components/Importer';
 import { Transactions } from './components/Transactions';
 import { Asset, AssetType, Transaction } from './types';
-import { INITIAL_ASSETS } from './constants';
 import { fetchCurrentPrices } from './services/marketService';
 import { calculatePosition } from './services/investmentService';
+import { getTransactions, saveTransaction, deleteTransactionFromDb } from './services/supabase';
+import { Loader2, CloudCheck, CloudOff } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
-  
-  // Transações do usuário
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const saved = localStorage.getItem('bolsamaster_transactions');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  // Ativos calculados dinamicamente
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error'>('synced');
   const [isLoadingPrices, setIsLoadingPrices] = useState(false);
+  const [forceOpenTransactionForm, setForceOpenTransactionForm] = useState(false);
 
-  // Persistência das transações
+  // Carrega transações do Supabase ao iniciar
   useEffect(() => {
-    localStorage.setItem('bolsamaster_transactions', JSON.stringify(transactions));
-  }, [transactions]);
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        const data = await getTransactions();
+        setTransactions(data || []);
+      } catch (err) {
+        console.error("Erro ao carregar dados do banco:", err);
+        setSyncStatus('error');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
+  }, []);
 
   // Recalcula ativos sempre que as transações mudarem
   useEffect(() => {
@@ -51,27 +60,57 @@ const App: React.FC = () => {
     setAssets(recalculatedAssets);
   }, [transactions]);
 
-  const handleAddTransaction = (t: Transaction) => {
-    setTransactions(prev => [...prev, t]);
+  const handleAddTransaction = async (t: Transaction) => {
+    setSyncStatus('syncing');
+    try {
+      await saveTransaction(t);
+      setTransactions(prev => [t, ...prev]);
+      setSyncStatus('synced');
+    } catch (err) {
+      console.error("Erro ao salvar:", err);
+      setSyncStatus('error');
+      alert("Erro ao salvar no banco de dados.");
+    }
   };
 
-  const handleDeleteTransaction = (id: string) => {
-    setTransactions(prev => prev.filter(t => t.id !== id));
+  const handleDeleteTransaction = async (id: string) => {
+    setSyncStatus('syncing');
+    try {
+      await deleteTransactionFromDb(id);
+      setTransactions(prev => prev.filter(t => t.id !== id));
+      setSyncStatus('synced');
+    } catch (err) {
+      console.error("Erro ao deletar:", err);
+      setSyncStatus('error');
+    }
   };
 
-  const handleImportedAssets = (newAssetData: Partial<Asset>[]) => {
-    const newTransactions: Transaction[] = newAssetData.map(data => ({
-      id: Math.random().toString(36).substr(2, 9),
-      ticker: data.ticker || 'UNKNOWN',
-      type: 'BUY',
-      quantity: data.quantity || 0,
-      price: data.averagePrice || 0,
-      costs: 0,
-      date: new Date().toISOString().split('T')[0]
-    }));
-    
-    setTransactions(prev => [...prev, ...newTransactions]);
-    setActiveTab('portfolio');
+  const handleGoToAddTransaction = () => {
+    setForceOpenTransactionForm(true);
+    setActiveTab('transactions');
+  };
+
+  const handleImportedAssets = async (newAssetData: Partial<Asset>[]) => {
+    setSyncStatus('syncing');
+    try {
+      for (const data of newAssetData) {
+        const t: Transaction = {
+          id: Math.random().toString(36).substr(2, 9),
+          ticker: data.ticker || 'UNKNOWN',
+          type: 'BUY',
+          quantity: data.quantity || 0,
+          price: data.averagePrice || 0,
+          costs: 0,
+          date: new Date().toISOString().split('T')[0]
+        };
+        await saveTransaction(t);
+        setTransactions(prev => [t, ...prev]);
+      }
+      setSyncStatus('synced');
+      setActiveTab('portfolio');
+    } catch (err) {
+      setSyncStatus('error');
+    }
   };
 
   const handleRefreshPrices = async () => {
@@ -93,8 +132,27 @@ const App: React.FC = () => {
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center space-y-4">
+          <Loader2 className="w-10 h-10 text-emerald-600 animate-spin mx-auto" />
+          <p className="text-slate-500 font-medium">Conectando ao banco de dados...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
+      <div className="flex justify-end mb-4">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-full border border-slate-200 shadow-sm text-xs font-medium">
+          {syncStatus === 'synced' && <><CloudCheck className="w-4 h-4 text-emerald-500" /> <span className="text-slate-600">Nuvem Sincronizada</span></>}
+          {syncStatus === 'syncing' && <><Loader2 className="w-4 h-4 text-amber-500 animate-spin" /> <span className="text-slate-600">Sincronizando...</span></>}
+          {syncStatus === 'error' && <><CloudOff className="w-4 h-4 text-rose-500" /> <span className="text-rose-600">Erro de Conexão</span></>}
+        </div>
+      </div>
+
       {activeTab === 'dashboard' && <Dashboard assets={assets} />}
       {activeTab === 'portfolio' && (
         <Portfolio 
@@ -102,6 +160,7 @@ const App: React.FC = () => {
           transactions={transactions}
           onRefreshPrices={handleRefreshPrices} 
           isLoading={isLoadingPrices} 
+          onAddAsset={handleGoToAddTransaction}
         />
       )}
       {activeTab === 'transactions' && (
@@ -109,6 +168,8 @@ const App: React.FC = () => {
           transactions={transactions}
           onAddTransaction={handleAddTransaction}
           onDeleteTransaction={handleDeleteTransaction}
+          forceOpenForm={forceOpenTransactionForm}
+          onFormOpened={() => setForceOpenTransactionForm(false)}
         />
       )}
       {activeTab === 'import' && <Importer onAssetsImported={handleImportedAssets} />}

@@ -1,8 +1,7 @@
-
 import { Asset, AssetType } from "../types";
 
 // COLOQUE SUA CHAVE DA BRAPI AQUI
-const BRAPI_TOKEN =71LiaxkJdh38TusGMWWcbe; 
+const BRAPI_TOKEN = "71LiaxkJdh38TusGMWWcbe"; 
 
 /**
  * INTEGRAÇÃO REAL (Brapi.dev)

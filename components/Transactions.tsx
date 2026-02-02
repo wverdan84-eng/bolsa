@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Transaction } from '../types';
-import { Plus, Trash2, ArrowUpCircle, ArrowDownCircle, Search } from 'lucide-react';
+import { Plus, Trash2, ArrowUpCircle, ArrowDownCircle, Search, X } from 'lucide-react';
 import { generateId } from '../services/investmentService';
 import { COMMON_TICKERS } from '../constants';
 
@@ -9,9 +9,17 @@ interface TransactionsProps {
   transactions: Transaction[];
   onAddTransaction: (t: Transaction) => void;
   onDeleteTransaction: (id: string) => void;
+  forceOpenForm?: boolean;
+  onFormOpened?: () => void;
 }
 
-export const Transactions: React.FC<TransactionsProps> = ({ transactions, onAddTransaction, onDeleteTransaction }) => {
+export const Transactions: React.FC<TransactionsProps> = ({ 
+  transactions, 
+  onAddTransaction, 
+  onDeleteTransaction,
+  forceOpenForm,
+  onFormOpened
+}) => {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     ticker: '',
@@ -25,6 +33,14 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, onAddT
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionRef = useRef<HTMLDivElement>(null);
+
+  // Detecta sinal de abertura forçada vindo do App.tsx
+  useEffect(() => {
+    if (forceOpenForm) {
+      setShowForm(true);
+      if (onFormOpened) onFormOpened();
+    }
+  }, [forceOpenForm, onFormOpened]);
 
   // Close suggestions when clicking outside
   useEffect(() => {
@@ -87,9 +103,13 @@ export const Transactions: React.FC<TransactionsProps> = ({ transactions, onAddT
         </div>
         <button 
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all shadow-sm font-medium ${
+            showForm 
+            ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' 
+            : 'bg-emerald-600 text-white hover:bg-emerald-700'
+          }`}
         >
-          {showForm ? 'Cancelar' : <><Plus className="w-4 h-4" /> Nova Transação</>}
+          {showForm ? <><X className="w-4 h-4" /> Cancelar</> : <><Plus className="w-4 h-4" /> Nova Transação</>}
         </button>
       </div>
 

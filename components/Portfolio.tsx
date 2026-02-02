@@ -19,9 +19,10 @@ interface PortfolioProps {
   transactions: Transaction[];
   onRefreshPrices: () => void;
   isLoading: boolean;
+  onAddAsset: () => void;
 }
 
-export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRefreshPrices, isLoading }) => {
+export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRefreshPrices, isLoading, onAddAsset }) => {
   const chartData = useMemo(() => calculateHistoricalData(transactions, assets), [transactions, assets]);
 
   return (
@@ -40,7 +41,10 @@ export const Portfolio: React.FC<PortfolioProps> = ({ assets, transactions, onRe
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             Atualizar Cotações
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all shadow-md shadow-emerald-100">
+          <button 
+            onClick={onAddAsset}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all shadow-md shadow-emerald-100 active:scale-95"
+          >
             <Plus className="w-4 h-4" />
             Novo Ativo
           </button>
