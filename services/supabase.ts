@@ -1,45 +1,44 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-/**
- * 💡 CONFIGURAÇÃO DO SUPABASE
- * 1. Vá em supabase.com -> Seu Projeto -> Project Settings -> API
- * 2. Copie a 'Project URL' e a 'anon public key'
- * 3. Substitua os valores abaixo:
- */
-const SUPABASE_URL = 'https://seu-projeto.supabase.co'; // Deve começar com https://
-const SUPABASE_ANON_KEY = 'sua-chave-anon-aqui';
+// 1. Substitua os valores abaixo com os dados do seu projeto em Project Settings > API
+const SUPABASE_URL =https://tmkeilhycxqchshbrzgg.supabase.co; 
+const SUPABASE_ANON_KEY =sb_publishable_V03NUwgy-r8hos471zZhyQ_KQUovBy3;
 
-// Função para validar se as chaves foram preenchidas corretamente pelo desenvolvedor
+// Validação mais simples para permitir que o desenvolvedor use URLs reais
 const isConfigured = () => {
   return SUPABASE_URL && 
          SUPABASE_URL.startsWith('https://') && 
-         !SUPABASE_URL.includes('seu-projeto.supabase.co') &&
-         SUPABASE_ANON_KEY !== 'sua-chave-anon-aqui';
+         !SUPABASE_URL.includes('seu-projeto.supabase.co');
 };
 
-// Inicializa o cliente apenas se a URL for válida para evitar o erro "Invalid supabaseUrl"
 export const supabase = isConfigured() 
   ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
 
-// Chave para o fallback local enquanto o banco não está pronto
 const LOCAL_STORAGE_KEY = 'bolsamaster_fallback_db';
 
 export async function getTransactions() {
   if (!supabase) {
-    console.warn("⚠️ Supabase não configurado em services/supabase.ts. Usando armazenamento local temporário.");
     const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
     return localData ? JSON.parse(localData) : [];
   }
 
-  const { data, error } = await supabase
-    .from('transactions')
-    .select('*')
-    .order('date', { ascending: false });
-  
-  if (error) throw error;
-  return data;
+  try {
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .order('date', { ascending: false });
+    
+    if (error) {
+      console.error("Erro Supabase (Get):", error.message);
+      throw error;
+    }
+    return data;
+  } catch (err) {
+    console.error("Falha ao buscar dados no Supabase:", err);
+    return [];
+  }
 }
 
 export async function saveTransaction(transaction: any) {
@@ -56,7 +55,10 @@ export async function saveTransaction(transaction: any) {
     .insert([transaction])
     .select();
     
-  if (error) throw error;
+  if (error) {
+    console.error("Erro Supabase (Insert):", error.message);
+    throw error;
+  }
   return data;
 }
 
@@ -75,5 +77,8 @@ export async function deleteTransactionFromDb(id: string) {
     .delete()
     .eq('id', id);
     
-  if (error) throw error;
+  if (error) {
+    console.error("Erro Supabase (Delete):", error.message);
+    throw error;
+  }
 }

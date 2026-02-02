@@ -8,27 +8,27 @@ import { Transactions } from './components/Transactions';
 import { Asset, AssetType, Transaction } from './types';
 import { fetchCurrentPrices } from './services/marketService';
 import { calculatePosition } from './services/investmentService';
-import { getTransactions, saveTransaction, deleteTransactionFromDb } from './services/supabase';
-import { Loader2, CloudCheck, CloudOff } from 'lucide-react';
+import { getTransactions, saveTransaction, deleteTransactionFromDb, supabase } from './services/supabase';
+import { Loader2, CloudCheck, CloudOff, Database } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error'>('synced');
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error' | 'local'>('local');
   const [isLoadingPrices, setIsLoadingPrices] = useState(false);
   const [forceOpenTransactionForm, setForceOpenTransactionForm] = useState(false);
 
-  // Carrega transações do Supabase ao iniciar
+  // Carrega transações ao iniciar
   useEffect(() => {
     const loadData = async () => {
       try {
         setIsLoading(true);
         const data = await getTransactions();
         setTransactions(data || []);
+        setSyncStatus(supabase ? 'synced' : 'local');
       } catch (err) {
-        console.error("Erro ao carregar dados do banco:", err);
         setSyncStatus('error');
       } finally {
         setIsLoading(false);
@@ -61,15 +61,16 @@ const App: React.FC = () => {
   }, [transactions]);
 
   const handleAddTransaction = async (t: Transaction) => {
+    const prevStatus = syncStatus;
     setSyncStatus('syncing');
     try {
       await saveTransaction(t);
       setTransactions(prev => [t, ...prev]);
-      setSyncStatus('synced');
+      setSyncStatus(supabase ? 'synced' : 'local');
     } catch (err) {
       console.error("Erro ao salvar:", err);
       setSyncStatus('error');
-      alert("Erro ao salvar no banco de dados.");
+      alert("Erro ao salvar. Verifique se a tabela 'transactions' existe no Supabase.");
     }
   };
 
@@ -78,9 +79,8 @@ const App: React.FC = () => {
     try {
       await deleteTransactionFromDb(id);
       setTransactions(prev => prev.filter(t => t.id !== id));
-      setSyncStatus('synced');
+      setSyncStatus(supabase ? 'synced' : 'local');
     } catch (err) {
-      console.error("Erro ao deletar:", err);
       setSyncStatus('error');
     }
   };
@@ -106,7 +106,7 @@ const App: React.FC = () => {
         await saveTransaction(t);
         setTransactions(prev => [t, ...prev]);
       }
-      setSyncStatus('synced');
+      setSyncStatus(supabase ? 'synced' : 'local');
       setActiveTab('portfolio');
     } catch (err) {
       setSyncStatus('error');
@@ -137,7 +137,7 @@ const App: React.FC = () => {
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center space-y-4">
           <Loader2 className="w-10 h-10 text-emerald-600 animate-spin mx-auto" />
-          <p className="text-slate-500 font-medium">Conectando ao banco de dados...</p>
+          <p className="text-slate-500 font-medium">Carregando dados...</p>
         </div>
       </div>
     );
@@ -147,7 +147,8 @@ const App: React.FC = () => {
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
       <div className="flex justify-end mb-4">
         <div className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-full border border-slate-200 shadow-sm text-xs font-medium">
-          {syncStatus === 'synced' && <><CloudCheck className="w-4 h-4 text-emerald-500" /> <span className="text-slate-600">Nuvem Sincronizada</span></>}
+          {syncStatus === 'synced' && <><CloudCheck className="w-4 h-4 text-emerald-500" /> <span className="text-slate-600">Sincronizado com Nuvem</span></>}
+          {syncStatus === 'local' && <><Database className="w-4 h-4 text-slate-400" /> <span className="text-slate-500">Armazenamento Local (Offline)</span></>}
           {syncStatus === 'syncing' && <><Loader2 className="w-4 h-4 text-amber-500 animate-spin" /> <span className="text-slate-600">Sincronizando...</span></>}
           {syncStatus === 'error' && <><CloudOff className="w-4 h-4 text-rose-500" /> <span className="text-rose-600">Erro de Conexão</span></>}
         </div>
