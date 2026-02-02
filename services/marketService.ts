@@ -1,35 +1,23 @@
-import { Asset, AssetType } from "../types";
 
-// COLOQUE SUA CHAVE DA BRAPI AQUI
+import { Asset, AssetType } from "../types";
+import * as XLSX from 'xlsx';
+// @ts-ignore
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Configuração do worker do PDF.js via CDN
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs`;
+
 const BRAPI_TOKEN = "71LiaxkJdh38TusGMWWcbe"; 
 
-/**
- * INTEGRAÇÃO REAL (Brapi.dev)
- * Documentação: https://brapi.dev/docs
- */
 export async function fetchCurrentPrices(tickers: string[]): Promise<Record<string, number>> {
   if (tickers.length === 0) return {};
-  
   try {
-    // Filtra apenas tickers que parecem ser da B3 (evita mandar BTC/ETH para Brapi se não estiver no plano certo)
     const b3Tickers = tickers.filter(t => t.length >= 5 || (t.length === 4 && !isNaN(Number(t.charAt(3)))));
-    
     if (b3Tickers.length === 0) return {};
-
-    const response = await fetch(
-      `https://brapi.dev/api/quote/${b3Tickers.join(',')}?token=${BRAPI_TOKEN}`
-    );
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error("Erro na Brapi:", errorData.message || response.statusText);
-      return {};
-    }
-
+    const response = await fetch(`https://brapi.dev/api/quote/${b3Tickers.join(',')}?token=${BRAPI_TOKEN}`);
+    if (!response.ok) return {};
     const data = await response.json();
     const results: Record<string, number> = {};
-
-    // A Brapi retorna um array em data.results
     if (data.results && Array.isArray(data.results)) {
       data.results.forEach((item: any) => {
         if (item.symbol && item.regularMarketPrice) {
@@ -37,18 +25,47 @@ export async function fetchCurrentPrices(tickers: string[]): Promise<Record<stri
         }
       });
     }
-
     return results;
   } catch (error) {
-    console.error("Erro de rede ao buscar cotações:", error);
     return {};
   }
 }
 
 /**
- * Parser Robusto para Corretoras Brasileiras
- * Tenta identificar colunas por nome (Case Insensitive)
+ * Parser para arquivos Excel (.xlsx, .xls)
  */
+export async function parseExcelLogic(data: ArrayBuffer): Promise<Partial<Asset>[]> {
+  const workbook = XLSX.read(data, { type: 'array' });
+  const firstSheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[firstSheetName];
+  const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+  
+  if (json.length < 1) return [];
+
+  // Flatten the excel into strings to use the legacy text parser logic
+  const textContent = json.map(row => row.join(';')).join('\n');
+  return legacyParser(textContent.split('\n'));
+}
+
+/**
+ * Parser para arquivos PDF (Notas de Corretagem ou Extratos)
+ */
+export async function parsePdfLogic(data: ArrayBuffer): Promise<Partial<Asset>[]> {
+  const loadingTask = pdfjsLib.getDocument({ data });
+  const pdf = await loadingTask.promise;
+  let fullText = "";
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items.map((item: any) => item.str).join(' ');
+    fullText += pageText + "\n";
+  }
+
+  // O PDF costuma ser bagunçado, o legacyParser é ideal aqui pois busca padrões de ticker
+  return legacyParser(fullText.split('\n'));
+}
+
 export function parseBrokerCsvLogic(csvText: string): Partial<Asset>[] {
   const lines = csvText.split(/\r?\n/);
   if (lines.length < 2) return [];
@@ -90,17 +107,26 @@ export function parseBrokerCsvLogic(csvText: string): Partial<Asset>[] {
 function legacyParser(lines: string[]): Partial<Asset>[] {
   const results: Partial<Asset>[] = [];
   lines.forEach(line => {
-    const parts = line.split(/[;,]/).map(p => p.trim());
-    const tickerMatch = parts.find(p => /^[A-Z]{4}[3456]|11$/.test(p));
+    // Regex para tickers brasileiros: 4 letras + 1 ou 2 números (ex: PETR4, MXRF11)
+    const parts = line.split(/[\s,;]+/).map(p => p.trim());
+    const tickerMatch = parts.find(p => /^[A-Z]{4}(3|4|5|6|11)$/.test(p));
+    
     if (tickerMatch) {
+      // Procura números na linha que possam ser quantidade e preço
       const numbers = parts
-        .map(p => p.replace(',', '.'))
-        .filter(p => !isNaN(parseFloat(p)) && parseFloat(p) !== 0);
+        .map(p => p.replace(/[R$\s.]/g, '').replace(',', '.'))
+        .filter(p => !isNaN(parseFloat(p)) && parseFloat(p) !== 0 && p !== tickerMatch);
+      
       if (numbers.length >= 2) {
+        // Assume o maior valor como preço e o menor (ou primeiro) como quantidade
+        // Ou segue a ordem natural se parecer coerente
+        const val1 = parseFloat(numbers[0]);
+        const val2 = parseFloat(numbers[1]);
+        
         results.push({
           ticker: tickerMatch,
-          quantity: parseFloat(numbers[0]),
-          averagePrice: parseFloat(numbers[1]),
+          quantity: val1,
+          averagePrice: val2,
           type: tickerMatch.endsWith('11') ? AssetType.FII : AssetType.STOCK
         });
       }
